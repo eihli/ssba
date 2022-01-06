@@ -1,0 +1,98 @@
+#+TITLE: Notes
+
+* Bell
+
+How do I debug ~printf "\a"~?
+
+* 1.2
+
+#+begin_src sh
+xxd -p hellohex
+#+end_src
+
+#+RESULTS:
+: 68656c6c6f20776f726c6420f09f98800a
+
+* 3.2 TCP Header
+
+#+begin_src sh :results output
+python -c "print('\nSEQ:\t{}\nACK:\t{}\nsource:\t{}\ndest:\t{}'.format(
+0x$(xxd -p -s 4 -l 4 tcpheader),
+0x$(xxd -p -s 8 -l 4 tcpheader),
+0x$(xxd -p -s 0 -l 2 tcpheader),
+0x$(xxd -p -s 2 -l 2 tcpheader)))"
+#+end_src
+
+#+RESULTS:
+:
+: SEQ:	1142846312
+: ACK:	4025655298
+: source:	44800
+: dest:	48134
+
+* 3.3 Bitmaps
+
+#+begin_src sh
+le() { awk '{print $2}'; }
+printf "%30s\t%20d\t%20s\n" "Size of BMP in bytes" "0x$( xxd -s 2 -l 2 -e image1.bmp | le)"  "$(xxd -s 2 -l 2 -e image1.bmp | le )"
+printf "%30s\t%20d\t%20s\n" "Image data offset byte" "0x$(xxd -s 10 -l 4 -e image1.bmp | le)" "$(xxd -s 10 -l 4 -e image1.bmp | le)"
+printf "%30s\t%20d\t%20s\n" "Width in bytes" "0x$(xxd -s 18 -l 4 -e image1.bmp | le)" "$(xxd -s 18 -l 4 -e image1.bmp | le)"
+printf "%30s\t%20d\t%20s\n" "Height in bytes" "0x$(xxd -s 22 -l 4 -e image1.bmp | le)" "$(xxd -s 22 -l 4 -e image1.bmp | le)"
+printf "%30s\t%20d\t%20s\n" "Bits per pixel" "0x$(xxd -s 28 -l 4 -e image1.bmp | le)"
+#+end_src
+
+#+RESULTS:
+| Size of BMP in bytes   | 3594 |     0e0a |
+| Image data offset byte |  138 | 0000008a |
+| Width in bytes         |   24 |       18 |
+| Height in bytes        |   48 |       30 |
+| Bits per pixel         |   24 |          |
+
+#+begin_src sh
+xxd -l 300 -c 15 -s 138 -g 3 image1.bmp
+echo
+xxd -l 300 -c 15 -s 138 -g 3 image2.bmp
+#+end_src
+
+#+RESULTS:
+| 0000008a: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000099: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000a8: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000b7: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000c6: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000d5: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000e4: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000000f3: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000102: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000111: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000120: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000012f: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000013e: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000014d: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000015c: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000016b: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 0000017a: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000189: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 00000198: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+| 000001a7: | ffffff | ffffff | ffffff | ffffff | ffffff | ............... |
+|           |        |        |        |        |        |                 |
+| 0000008a: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000099: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000a8: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000b7: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000c6: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000d5: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000e4: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000000f3: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000102: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000111: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000120: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000012f: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000013e: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000014d: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000015c: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000016b: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 0000017a: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000189: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 00000198: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |
+| 000001a7: | 0000ff | 0000ff | 0000ff | 0000ff | 0000ff | ............... |

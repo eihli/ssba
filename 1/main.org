@@ -1,0 +1,408 @@
+#+TITLE: Exploring Architecture
+
+This is more of a reference for future exploration than a coherent description of any particular topic.
+
+* Measuring clock speed
+
+https://pubs.opengroup.org/onlinepubs/009695399/basedefs/time.h.html
+
+CLOCKS_PER_SEC
+    A number used to convert the value returned by the clock() function into seconds.
+
+https://pubs.opengroup.org/onlinepubs/009695399/functions/clock.html
+
+DESCRIPTION
+
+    [CX] [Option Start] The functionality described on this reference page is aligned with the ISO C standard. Any conflict between the requirements described here and the ISO C standard is unintentional. This volume of IEEE Std 1003.1-2001 defers to the ISO C standard. [Option End]
+
+    The clock() function shall return the implementation's best approximation to the processor time used by the process since the beginning of an implementation-defined era related only to the process invocation.
+
+RETURN VALUE
+
+    To determine the time in seconds, the value returned by clock() should be divided by the value of the macro CLOCKS_PER_SEC. [XSI] [Option Start]  CLOCKS_PER_SEC is defined to be one million in <time.h>. [Option End] If the processor time used is not available or its value cannot be represented, the function shall return the value ( clock_t)-1.
+
+#+begin_src C :exports results :tangle clock_speed.c
+#include <stdio.h>
+#include <time.h>
+
+int main() {
+    clock_t start = clock(), elapsed;
+    unsigned long i, iters;
+    i = 0;
+    iters = 4e9;
+    while (i < iters) {
+        i++;
+    }
+    elapsed = clock() - start;
+    float elapsed_s = (float) elapsed / CLOCKS_PER_SEC;
+    float hz = iters / elapsed_s;
+    printf("Processing took\t%f seconds\n", elapsed_s);
+    printf("Estimated clock speed is\t%f GHz\n", hz / 1e9);
+}
+#+end_src
+
+#+RESULTS:
+| Processing took          | 10.195332 seconds. |
+| Estimated clock speed is |          0.392336. |
+
+How does this compare to the actual clock speed?
+
+#+begin_src sh
+# This will show cpuinfo for each core, but the model will be the same for
+# each, so use `head -1` to just look at the first.
+cat /proc/cpuinfo | grep 'model name' | head -1
+#+end_src
+
+#+RESULTS:
+| model name | : Intel(R) Core(TM) i9-10885H CPU @ 2.40GHz |
+
+Why does our C code show 0.4 GHz but our cpuinfo show 2.4 GHz?
+
+#+begin_src sh :results output
+clang -S clock_speed.c
+cat clock_speed.s
+#+end_src
+
+#+RESULTS:
+#+begin_example
+	.text
+	.file	"clock_speed.c"
+	.section	.rodata.cst8,"aM",@progbits,8
+	.p2align	3                               # -- Begin function main
+.LCPI0_0:
+	.quad	0x41edcd6500000000              # double 4.0E+9
+.LCPI0_3:
+	.quad	0x412e848000000000              # double 1.0E+6
+.LCPI0_4:
+	.quad	0x408f400000000000              # double 1000
+.LCPI0_5:
+	.quad	0x3ff0000000000000              # double 1
+	.section	.rodata.cst16,"aM",@progbits,16
+	.p2align	4
+.LCPI0_1:
+	.long	1127219200                      # 0x43300000
+	.long	1160773632                      # 0x45300000
+	.long	0                               # 0x0
+	.long	0                               # 0x0
+.LCPI0_2:
+	.quad	0x4330000000000000              # double 4503599627370496
+	.quad	0x4530000000000000              # double 1.9342813113834067E+25
+	.text
+	.globl	main
+	.p2align	4, 0x90
+	.type	main,@function
+main:                                   # @main
+	.cfi_startproc
+# %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	$0, -4(%rbp)
+	callq	clock@PLT
+	movq	%rax, -16(%rbp)
+	movq	$0, -32(%rbp)
+.LBB0_1:                                # =>This Inner Loop Header: Depth=1
+	movaps	.LCPI0_1(%rip), %xmm0           # xmm0 = [1127219200,1160773632,0,0]
+	movq	-32(%rbp), %xmm1                # xmm1 = mem[0],zero
+	punpckldq	%xmm0, %xmm1            # xmm1 = xmm1[0],xmm0[0],xmm1[1],xmm0[1]
+	movapd	.LCPI0_2(%rip), %xmm0           # xmm0 = [4.503599627370496E+15,1.9342813113834067E+25]
+	subpd	%xmm0, %xmm1
+	movaps	%xmm1, %xmm0
+	unpckhpd	%xmm1, %xmm1                    # xmm1 = xmm1[1,1]
+	addsd	%xmm0, %xmm1
+	movsd	.LCPI0_0(%rip), %xmm0           # xmm0 = mem[0],zero
+	ucomisd	%xmm1, %xmm0
+	jbe	.LBB0_3
+# %bb.2:                                #   in Loop: Header=BB0_1 Depth=1
+	movq	-32(%rbp), %rax
+	addq	$1, %rax
+	movq	%rax, -32(%rbp)
+	jmp	.LBB0_1
+.LBB0_3:
+	callq	clock@PLT
+	subq	-16(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	leaq	.L.str(%rip), %rdi
+	movl	$1000000, %esi                  # imm = 0xF4240
+	movb	$0, %al
+	callq	printf@PLT
+	cvtsi2sdq	-24(%rbp), %xmm1
+	movsd	.LCPI0_5(%rip), %xmm0           # xmm0 = mem[0],zero
+	mulsd	%xmm1, %xmm0
+	movsd	.LCPI0_4(%rip), %xmm1           # xmm1 = mem[0],zero
+	mulsd	%xmm1, %xmm0
+	movsd	.LCPI0_3(%rip), %xmm1           # xmm1 = mem[0],zero
+	divsd	%xmm1, %xmm0
+	leaq	.L.str.1(%rip), %rdi
+	movb	$1, %al
+	callq	printf@PLT
+	movl	-4(%rbp), %eax
+	addq	$32, %rsp
+	popq	%rbp
+	.cfi_def_cfa %rsp, 8
+	retq
+.Lfunc_end0:
+	.size	main, .Lfunc_end0-main
+	.cfi_endproc
+                                        # -- End function
+	.type	.L.str,@object                  # @.str
+	.section	.rodata.str1.1,"aMS",@progbits,1
+.L.str:
+	.asciz	"CLOCKS_PER_SECOND: %lu\n"
+	.size	.L.str, 24
+
+	.type	.L.str.1,@object                # @.str.1
+.L.str.1:
+	.asciz	"Processing took %f ms\n"
+	.size	.L.str.1, 23
+
+	.ident	"clang version 13.0.0"
+	.section	".note.GNU-stack","",@progbits
+	.addrsig
+	.addrsig_sym clock
+	.addrsig_sym printf
+#+end_example
+
+** Compare that generated assembly to the dissassembled file.
+
+I think the ~.palign~ from above match up with the ~nop~ below - at least when the code doesn't naturally align.
+
+#+begin_src sh :results output
+objdump -d clock_speed
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+clock_speed:     file format elf64-x86-64
+
+
+Disassembly of section .init:
+
+0000000000001000 <_init>:
+    1000:	f3 0f 1e fa          	endbr64
+    1004:	48 83 ec 08          	sub    $0x8,%rsp
+    1008:	48 8b 05 d9 2f 00 00 	mov    0x2fd9(%rip),%rax        # 3fe8 <__gmon_start__>
+    100f:	48 85 c0             	test   %rax,%rax
+    1012:	74 02                	je     1016 <_init+0x16>
+    1014:	ff d0                	call   *%rax
+    1016:	48 83 c4 08          	add    $0x8,%rsp
+    101a:	c3                   	ret
+
+Disassembly of section .plt:
+
+0000000000001020 <clock@plt-0x10>:
+    1020:	ff 35 e2 2f 00 00    	push   0x2fe2(%rip)        # 4008 <_GLOBAL_OFFSET_TABLE_+0x8>
+    1026:	ff 25 e4 2f 00 00    	jmp    *0x2fe4(%rip)        # 4010 <_GLOBAL_OFFSET_TABLE_+0x10>
+    102c:	0f 1f 40 00          	nopl   0x0(%rax)
+
+0000000000001030 <clock@plt>:
+    1030:	ff 25 e2 2f 00 00    	jmp    *0x2fe2(%rip)        # 4018 <clock@GLIBC_2.2.5>
+    1036:	68 00 00 00 00       	push   $0x0
+    103b:	e9 e0 ff ff ff       	jmp    1020 <_init+0x20>
+
+0000000000001040 <printf@plt>:
+    1040:	ff 25 da 2f 00 00    	jmp    *0x2fda(%rip)        # 4020 <printf@GLIBC_2.2.5>
+    1046:	68 01 00 00 00       	push   $0x1
+    104b:	e9 d0 ff ff ff       	jmp    1020 <_init+0x20>
+
+Disassembly of section .text:
+
+0000000000001050 <_start>:
+    1050:	f3 0f 1e fa          	endbr64
+    1054:	31 ed                	xor    %ebp,%ebp
+    1056:	49 89 d1             	mov    %rdx,%r9
+    1059:	5e                   	pop    %rsi
+    105a:	48 89 e2             	mov    %rsp,%rdx
+    105d:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
+    1061:	50                   	push   %rax
+    1062:	54                   	push   %rsp
+    1063:	4c 8d 05 26 02 00 00 	lea    0x226(%rip),%r8        # 1290 <__libc_csu_fini>
+    106a:	48 8d 0d af 01 00 00 	lea    0x1af(%rip),%rcx        # 1220 <__libc_csu_init>
+    1071:	48 8d 3d d8 00 00 00 	lea    0xd8(%rip),%rdi        # 1150 <main>
+    1078:	ff 15 62 2f 00 00    	call   *0x2f62(%rip)        # 3fe0 <__libc_start_main@GLIBC_2.2.5>
+    107e:	f4                   	hlt
+    107f:	90                   	nop
+
+0000000000001080 <deregister_tm_clones>:
+    1080:	48 8d 3d b1 2f 00 00 	lea    0x2fb1(%rip),%rdi        # 4038 <__TMC_END__>
+    1087:	48 8d 05 aa 2f 00 00 	lea    0x2faa(%rip),%rax        # 4038 <__TMC_END__>
+    108e:	48 39 f8             	cmp    %rdi,%rax
+    1091:	74 15                	je     10a8 <deregister_tm_clones+0x28>
+    1093:	48 8b 05 3e 2f 00 00 	mov    0x2f3e(%rip),%rax        # 3fd8 <_ITM_deregisterTMCloneTable>
+    109a:	48 85 c0             	test   %rax,%rax
+    109d:	74 09                	je     10a8 <deregister_tm_clones+0x28>
+    109f:	ff e0                	jmp    *%rax
+    10a1:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+    10a8:	c3                   	ret
+    10a9:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+
+00000000000010b0 <register_tm_clones>:
+    10b0:	48 8d 3d 81 2f 00 00 	lea    0x2f81(%rip),%rdi        # 4038 <__TMC_END__>
+    10b7:	48 8d 35 7a 2f 00 00 	lea    0x2f7a(%rip),%rsi        # 4038 <__TMC_END__>
+    10be:	48 29 fe             	sub    %rdi,%rsi
+    10c1:	48 89 f0             	mov    %rsi,%rax
+    10c4:	48 c1 ee 3f          	shr    $0x3f,%rsi
+    10c8:	48 c1 f8 03          	sar    $0x3,%rax
+    10cc:	48 01 c6             	add    %rax,%rsi
+    10cf:	48 d1 fe             	sar    %rsi
+    10d2:	74 14                	je     10e8 <register_tm_clones+0x38>
+    10d4:	48 8b 05 15 2f 00 00 	mov    0x2f15(%rip),%rax        # 3ff0 <_ITM_registerTMCloneTable>
+    10db:	48 85 c0             	test   %rax,%rax
+    10de:	74 08                	je     10e8 <register_tm_clones+0x38>
+    10e0:	ff e0                	jmp    *%rax
+    10e2:	66 0f 1f 44 00 00    	nopw   0x0(%rax,%rax,1)
+    10e8:	c3                   	ret
+    10e9:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+
+00000000000010f0 <__do_global_dtors_aux>:
+    10f0:	f3 0f 1e fa          	endbr64
+    10f4:	80 3d 3d 2f 00 00 00 	cmpb   $0x0,0x2f3d(%rip)        # 4038 <__TMC_END__>
+    10fb:	75 33                	jne    1130 <__do_global_dtors_aux+0x40>
+    10fd:	55                   	push   %rbp
+    10fe:	48 83 3d f2 2e 00 00 	cmpq   $0x0,0x2ef2(%rip)        # 3ff8 <__cxa_finalize@GLIBC_2.2.5>
+    1105:	00
+    1106:	48 89 e5             	mov    %rsp,%rbp
+    1109:	74 0d                	je     1118 <__do_global_dtors_aux+0x28>
+    110b:	48 8b 3d 1e 2f 00 00 	mov    0x2f1e(%rip),%rdi        # 4030 <__dso_handle>
+    1112:	ff 15 e0 2e 00 00    	call   *0x2ee0(%rip)        # 3ff8 <__cxa_finalize@GLIBC_2.2.5>
+    1118:	e8 63 ff ff ff       	call   1080 <deregister_tm_clones>
+    111d:	c6 05 14 2f 00 00 01 	movb   $0x1,0x2f14(%rip)        # 4038 <__TMC_END__>
+    1124:	5d                   	pop    %rbp
+    1125:	c3                   	ret
+    1126:	66 2e 0f 1f 84 00 00 	cs nopw 0x0(%rax,%rax,1)
+    112d:	00 00 00
+    1130:	c3                   	ret
+    1131:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+    1138:	00 00 00 00
+    113c:	0f 1f 40 00          	nopl   0x0(%rax)
+
+0000000000001140 <frame_dummy>:
+    1140:	f3 0f 1e fa          	endbr64
+    1144:	e9 67 ff ff ff       	jmp    10b0 <register_tm_clones>
+    1149:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+
+0000000000001150 <main>:
+    1150:	55                   	push   %rbp
+    1151:	48 89 e5             	mov    %rsp,%rbp
+    1154:	48 83 ec 20          	sub    $0x20,%rsp
+    1158:	c7 45 fc 00 00 00 00 	movl   $0x0,-0x4(%rbp)
+    115f:	e8 cc fe ff ff       	call   1030 <clock@plt>
+    1164:	48 89 45 f0          	mov    %rax,-0x10(%rbp)
+    1168:	48 c7 45 e0 00 00 00 	movq   $0x0,-0x20(%rbp)
+    116f:	00
+    1170:	0f 28 05 b9 0e 00 00 	movaps 0xeb9(%rip),%xmm0        # 2030 <_IO_stdin_used+0x30>
+    1177:	f3 0f 7e 4d e0       	movq   -0x20(%rbp),%xmm1
+    117c:	66 0f 62 c8          	punpckldq %xmm0,%xmm1
+    1180:	66 0f 28 05 b8 0e 00 	movapd 0xeb8(%rip),%xmm0        # 2040 <_IO_stdin_used+0x40>
+    1187:	00
+    1188:	66 0f 5c c8          	subpd  %xmm0,%xmm1
+    118c:	0f 28 c1             	movaps %xmm1,%xmm0
+    118f:	66 0f 15 c9          	unpckhpd %xmm1,%xmm1
+    1193:	f2 0f 58 c8          	addsd  %xmm0,%xmm1
+    1197:	f2 0f 10 05 69 0e 00 	movsd  0xe69(%rip),%xmm0        # 2008 <_IO_stdin_used+0x8>
+    119e:	00
+    119f:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+    11a3:	76 0e                	jbe    11b3 <main+0x63>
+    11a5:	48 8b 45 e0          	mov    -0x20(%rbp),%rax
+    11a9:	48 83 c0 01          	add    $0x1,%rax
+    11ad:	48 89 45 e0          	mov    %rax,-0x20(%rbp)
+    11b1:	eb bd                	jmp    1170 <main+0x20>
+    11b3:	e8 78 fe ff ff       	call   1030 <clock@plt>
+    11b8:	48 2b 45 f0          	sub    -0x10(%rbp),%rax
+    11bc:	48 89 45 e8          	mov    %rax,-0x18(%rbp)
+    11c0:	48 8d 3d 89 0e 00 00 	lea    0xe89(%rip),%rdi        # 2050 <_IO_stdin_used+0x50>
+    11c7:	be 40 42 0f 00       	mov    $0xf4240,%esi
+    11cc:	b0 00                	mov    $0x0,%al
+    11ce:	e8 6d fe ff ff       	call   1040 <printf@plt>
+    11d3:	f2 48 0f 2a 4d e8    	cvtsi2sdq -0x18(%rbp),%xmm1
+    11d9:	f2 0f 10 05 3f 0e 00 	movsd  0xe3f(%rip),%xmm0        # 2020 <_IO_stdin_used+0x20>
+    11e0:	00
+    11e1:	f2 0f 59 c1          	mulsd  %xmm1,%xmm0
+    11e5:	f2 0f 10 0d 2b 0e 00 	movsd  0xe2b(%rip),%xmm1        # 2018 <_IO_stdin_used+0x18>
+    11ec:	00
+    11ed:	f2 0f 59 c1          	mulsd  %xmm1,%xmm0
+    11f1:	f2 0f 10 0d 17 0e 00 	movsd  0xe17(%rip),%xmm1        # 2010 <_IO_stdin_used+0x10>
+    11f8:	00
+    11f9:	f2 0f 5e c1          	divsd  %xmm1,%xmm0
+    11fd:	48 8d 3d 64 0e 00 00 	lea    0xe64(%rip),%rdi        # 2068 <_IO_stdin_used+0x68>
+    1204:	b0 01                	mov    $0x1,%al
+    1206:	e8 35 fe ff ff       	call   1040 <printf@plt>
+    120b:	8b 45 fc             	mov    -0x4(%rbp),%eax
+    120e:	48 83 c4 20          	add    $0x20,%rsp
+    1212:	5d                   	pop    %rbp
+    1213:	c3                   	ret
+    1214:	66 2e 0f 1f 84 00 00 	cs nopw 0x0(%rax,%rax,1)
+    121b:	00 00 00
+    121e:	66 90                	xchg   %ax,%ax
+
+0000000000001220 <__libc_csu_init>:
+    1220:	f3 0f 1e fa          	endbr64
+    1224:	41 57                	push   %r15
+    1226:	4c 8d 3d ab 2b 00 00 	lea    0x2bab(%rip),%r15        # 3dd8 <__frame_dummy_init_array_entry>
+    122d:	41 56                	push   %r14
+    122f:	49 89 d6             	mov    %rdx,%r14
+    1232:	41 55                	push   %r13
+    1234:	49 89 f5             	mov    %rsi,%r13
+    1237:	41 54                	push   %r12
+    1239:	41 89 fc             	mov    %edi,%r12d
+    123c:	55                   	push   %rbp
+    123d:	48 8d 2d 9c 2b 00 00 	lea    0x2b9c(%rip),%rbp        # 3de0 <__do_global_dtors_aux_fini_array_entry>
+    1244:	53                   	push   %rbx
+    1245:	4c 29 fd             	sub    %r15,%rbp
+    1248:	48 83 ec 08          	sub    $0x8,%rsp
+    124c:	e8 af fd ff ff       	call   1000 <_init>
+    1251:	48 c1 fd 03          	sar    $0x3,%rbp
+    1255:	74 1f                	je     1276 <__libc_csu_init+0x56>
+    1257:	31 db                	xor    %ebx,%ebx
+    1259:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+    1260:	4c 89 f2             	mov    %r14,%rdx
+    1263:	4c 89 ee             	mov    %r13,%rsi
+    1266:	44 89 e7             	mov    %r12d,%edi
+    1269:	41 ff 14 df          	call   *(%r15,%rbx,8)
+    126d:	48 83 c3 01          	add    $0x1,%rbx
+    1271:	48 39 dd             	cmp    %rbx,%rbp
+    1274:	75 ea                	jne    1260 <__libc_csu_init+0x40>
+    1276:	48 83 c4 08          	add    $0x8,%rsp
+    127a:	5b                   	pop    %rbx
+    127b:	5d                   	pop    %rbp
+    127c:	41 5c                	pop    %r12
+    127e:	41 5d                	pop    %r13
+    1280:	41 5e                	pop    %r14
+    1282:	41 5f                	pop    %r15
+    1284:	c3                   	ret
+    1285:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+    128c:	00 00 00 00
+
+0000000000001290 <__libc_csu_fini>:
+    1290:	f3 0f 1e fa          	endbr64
+    1294:	c3                   	ret
+
+Disassembly of section .fini:
+
+0000000000001298 <_fini>:
+    1298:	f3 0f 1e fa          	endbr64
+    129c:	48 83 ec 08          	sub    $0x8,%rsp
+    12a0:	48 83 c4 08          	add    $0x8,%rsp
+    12a4:	c3                   	ret
+#+end_example
+
+* JIT
+
+Here's how I understand it.
+
+An interpreter is some machine code, just like what we disassembled above.
+
+There's some locations in the machine code that get reserved for later use.
+
+When the interpreter determines a particular bit of interpreted code is going to run often, then it compiles it to machine code, pops it info that reserved memory location, and then that previously-interpreted "script" is now a label in machine code, same as the "main" label for the main function of the interpreter. When the interpreter gets the message to run that JIT-compiled function, it can... I don't know what it can do. I expect there's some introspection that can happen. I expect the interpreter will need to know where the program counter is, what the address of some of that reserved space is, what the address of the stack is... etc... But that's where my understanding breaks down.
+
+
+* Performance
+
+Types have an impact on speed performance - not just memory footprint.
+
+If you have a 1 Kib L1 cache, then it can hold 16 64-bit floats. Every time it's finished working with those 16 floats, then it needs to fetch another 16 from RAM. That RAM fetch might take 100 nanoseconds whereas an instruction from a L1 cache might take 0.5 nanoseconds. If your processing 1000 numbers, that's 6200 nanoseconds to process 64-bit floats 3100 seconds to process 32-bit longs and 1500 nanoseconds to process 16-bit ints.
