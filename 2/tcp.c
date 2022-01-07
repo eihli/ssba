@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <netinet/in.h>
+#include <bits/byteswap.h>
 
 typedef uint8_t byte;
 typedef struct Option {
@@ -14,7 +16,32 @@ typedef struct Option {
 
 void filecopy(FILE *ifp, FILE *ofp);
 void read_bytes(FILE *ifp, byte *buffer, long offset, int n);
+uint8_t get8(FILE *fp)
+{
+    uint8_t v;
+    fread(&v, sizeof(v), 1, fp);
+    return v;
+};
+uint16_t get16(FILE *fp)
+{
+    uint16_t v;
+    fread(&v, sizeof(v), 1, fp);
+    return ntohs(v);
+}
+uint32_t get32(FILE *fp)
+{
+    uint32_t v;
+    fread(&v, sizeof(v), 1, fp);
+    return ntohl(v);
+}
+uint64_t get64(FILE *fp)
+{
+    uint64_t v;
+    fread(&v, sizeof(v), 1, fp);
+    return __bswap_64(v);
+}
 void read_option(FILE *fp, byte *buffer);
+void swap_endian_l(uint32_t *val);
 option *read_options(FILE *fp, option *options);
 
 #define BUF_SIZE = 60; // Maximum number of bytes we'd possibly read from a TCP header.
@@ -38,15 +65,19 @@ int main(int argc, char *argv[])
 
     // Destination port
     read_bytes(fp, buffer, 2, 2);
-    int16_t dst_prt = ((int16_t *) buffer)[0];
+    uint16_t dst_prt = (buffer[0] << 8) + buffer[1];
 
     // Sequence #
-    read_bytes(fp, buffer, 4, 4);
-    long seq = ((long *)buffer)[0];
+    fseek(fp, 4 ,SEEK_SET);
+    uint32_t seq = get32(fp);
+    /* read_bytes(fp, buffer, 4, 4); */
+    /* uint32_t seq = ((uint32_t *)buffer)[0]; */
+    /* swap_endian_l(&seq); */
 
     // Acknowledgement #
     read_bytes(fp, buffer, 8, 4);
-    long ack = ((long *)buffer)[0];
+    uint32_t ack = ((uint32_t *)buffer)[0];
+    swap_endian_l(&ack);
 
     // Data offset
     read_bytes(fp, buffer, 12, 1);
@@ -58,14 +89,12 @@ int main(int argc, char *argv[])
     printf("%10s | \n", "data");
     printf("%10d | \n", data_offset);
 
-
     option options[20];
+
     read_options(fp, options);
-    int i;
-    option current;
-    for (i = 0, current = options[i]; current.length != 0; i++) {
+    for (int i = 0; options[i].kind != 0; i++) {
         printf("%10s | %10s\n", "kind", "length");
-        printf("%10d | %10d\n", current.kind, current.length);
+        printf("%10d | %10d\n", options[i].kind, options[i].length);
     }
 }
 
@@ -79,56 +108,50 @@ void filecopy(FILE *ifp, FILE *ofp)
 
 void read_bytes(FILE *fp, byte *buffer, long offset, int n)
 {
-    long orig = ftell(fp);
-    printf("Original seek position: %lu\n", orig);
+    uint32_t orig = ftell(fp);
     fseek(fp, offset, SEEK_SET);
-    printf("New seek position: %lu\n", offset);
-    fread(buffer, 1, n, fp);
-    fseek(fp, orig, SEEK_SET);
-}
-
-void read_option(FILE *fp, byte *buffer)
-{
-    const byte OPT_OFST = 20;
-    long orig = ftell(fp);
-    fseek(fp, OPT_OFST, SEEK_SET);
-
-    byte option_kind = getc(fp);
-    printf("Kind: %d\n", option_kind);
-
-    byte option_len = getc(fp);
-    printf("Len:  %x\n", option_len);
-
-    fread(buffer, 1, option_len, fp);
-    printf("Data: ");
-    for (int i = 0; i < option_len; i++)
-        printf("%c ", (byte) buffer[i]);
-    printf("\n");
+    int r = fread(buffer, sizeof(byte), n, fp);
     fseek(fp, orig, SEEK_SET);
 }
 
 option *read_options(FILE *fp, option *options)
 {
     // Save original seek position so we can restore it when done.
-    long orig = ftell(fp);
+    uint32_t orig = ftell(fp);
 
     // Seek to the offset where we can find the size of the TCP header
     fseek(fp, 12, SEEK_SET);
-    const byte header_size = getc(fp) >> 4 << 2;
+    const byte header_size = getc(fp) >> 4 << 2; // in bytes
 
     // Seek to the options
     fseek(fp, 20, SEEK_SET);
-    byte kind, length, *data;
+    byte kind, length, **data, i = 0;
     while (ftell(fp) < header_size) {
-        kind = getc(fp);
-        length = getc(fp);
-        data = (byte *)malloc(sizeof(byte) * length);
-        for (byte i = 0; i < length; i++)
-            data[i] = getc(fp);
-        options[0] = (option){ kind, length, data };
+        kind = get8(fp);
+        if (kind == 0 || kind == 1) {
+            options[i] = (option) { kind, 0, NULL };
+        } else {
+            length = get8(fp);
+            for (int i = 2; i < length; i++)
+                get8(fp);
+            options[i] = (option) { kind, length, NULL };
+        }
+        i++;
     }
-    options[ftell(fp)] = (option) { 0, 0, NULL };
+    options[i] = (option) { 0, 0, NULL };
 
     fseek(fp, orig, SEEK_SET);
     return options;
+}
+
+void swap_endian_l(uint32_t *val)
+{
+    uint32_t temp = 0;
+    temp = (
+        ((*val & 0xFF) << 24)
+        | ((*val & 0xFF00) << 8)
+        | ((*val & 0xFF0000) >> 8)
+        | ((*val & 0xFF000000) >> 24)
+    );
+    *val = temp;
 }
