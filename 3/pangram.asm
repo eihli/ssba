@@ -1,3 +1,4 @@
+;;; This was before I knew of the BTS instruction...
 	section .text
 
 global pangram
