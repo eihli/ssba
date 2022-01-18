@@ -4,12 +4,14 @@
 #include <stdint.h>
 
 #include "lex.h"
+#include "parse.h"
 #include "string_utils.h"
 
 #define MAX_TOK_LN 50
 
 size_t bufsize = 50;
 char *linebuf;
+
 
 typedef struct parse_result_t {
     token_type type;
@@ -35,12 +37,121 @@ void parse_expression();
 void parse_term();
 void parse_number();
 
+token lookahead = {0};
+int read_tok();
+int match(token_type type);
+void expr();
+void term();
+void factor();
+void rest();
+void term_rest();
+
 ast_node *parse_expr(FILE *stream);
 
-int main() {
-    parse_result_buf[0] = parse_result_null;
-    parse_expression();
+int main()
+{
+    read_tok();
+    expr();
 }
+
+void expr()
+{
+    printf("EXPR\n");
+    term();
+    rest();
+}
+
+void term()
+{
+    printf("TERM\n");
+    factor();
+    term_rest();
+}
+
+void factor()
+{
+    printf("FACTOR\n");
+    switch (lookahead.type) {
+        case OPEN_PAREN:
+            match(OPEN_PAREN);
+            expr();
+            match(CLOSE_PAREN);
+            break;
+        case NUM:
+            match(NUM);
+            break;
+        default:
+            printf("Expected ( or NUM but got %s\n", enum_names[lookahead.type]);
+    }
+}
+
+void rest()
+{
+    printf("REST\n");
+    switch (lookahead.type) {
+        case ADD:
+        case SUB:
+            match(lookahead.type);
+            term();
+            break;
+        default:
+            ;
+    }
+}
+
+void term_rest()
+{
+    printf("TERM_REST\n");
+    switch (lookahead.type) {
+        case MUL:
+        case DIV:
+            match(lookahead.type);
+            factor();
+            break;
+        case OPEN_PAREN:
+            expr();
+            match(CLOSE_PAREN);
+            break;
+        default:
+            ;
+    }
+}
+
+int match(token_type type)
+{
+    if (lookahead.type != type) {
+        printf("Expected %s but received %s\n", enum_names[type], enum_names[lookahead.type]);
+        read_tok();
+        return 0;
+    }
+    printf("Matched %s\n", enum_names[type]);
+    read_tok();
+    return 1;
+}
+
+
+int read_tok()
+{
+    int l = getline(&linebuf, &bufsize, stdin);
+    if (l == -1) {
+        return EOF;
+    }
+
+    linebuf[l - 2] = '\0';
+    linebuf++;
+
+    split_on(' ', linebuf);
+    while (*(linebuf++) != '\0')
+        ;
+
+    lookahead.type = atoi(linebuf);
+
+    while (*(linebuf++) != '\0')
+        ;
+    lookahead.lexeme = linebuf;
+    return 1;
+}
+
 
 void out(char* msg) {
     for (int i = 0; i < depth; i++)

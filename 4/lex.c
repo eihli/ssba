@@ -1,6 +1,6 @@
 /* I want to write my compiler toolchain in C such that I can pipe the output from one step into the input of another step. cat foo.cal | ./scan | ./parse | ./eval. Let's not dig into why just yet. */
 
-/* Problem is it's convenient for the parser to get "typed" tokens from the scanner. In both the solution and in Crafting Interpreters, the scanner already read the string "3.14", and it's a trivial step to store the numeric value right there too since you know it will be needed for later stages.  */
+/* Problem is it's convenient for the parser to get "typed" tokens from the scanner. In both the solution and in Crafting Interpreters, the scanner already read the string "3.14", and it's a trivial step to store the numeric lexeme right there too since you know it will be needed for later stages.  */
 
 /* But it's like... whatever I choose to pipe from the scanner to the parser, the parser is going to have to know how to turn that format back into the C data structures that I need. */
 
@@ -8,24 +8,22 @@
 
 #include <stdio.h>
 
+#include "lex.h"
+
 #define MAX_TOK_LN  50
 
-typedef enum {
-    SUB,
-    ADD,
-    DIV,
-    MUL,
-    OP,
-    CP,
-    NUM
-} TOK_TYPE;
-
-const char* enum_names[] = { "SUB", "ADD", "DIV", "MUL", "OPN", "CPN", "NUM" };
-
-typedef struct {
-    TOK_TYPE tok_type;
-    char value[MAX_TOK_LN];
-} token;
+const char* enum_names[] = {
+    "SUB",
+    "ADD",
+    "DIV",
+    "MUL",
+    "OPEN_PAREN",
+    "CLOSE_PAREN",
+    "NUM",
+    "DECIMAL",
+    "STRING",
+    "IDENTIFIER"
+};
 
 static token t;
 
@@ -34,7 +32,7 @@ int scan_number();
 
 void print_tok()
 {
-    printf("<%s %s>\n", enum_names[t.tok_type], t.value);
+    printf("<%s %d %s>\n", enum_names[t.type], t.type, t.lexeme);
 }
 
 int main()
@@ -68,10 +66,10 @@ int next_token()
             t = (token) { DIV, "/"};
             break;
         case '(':
-            t = (token) { OP, "("};
+            t = (token) { OPEN_PAREN, "("};
             break;
         case ')':
-            t = (token) { CP, ")"};
+            t = (token) { CLOSE_PAREN, ")"};
             break;
         default:
             if ('0' <= c && c <= '9') {
@@ -97,14 +95,15 @@ int is_digit(c) {
 int scan_number()
 {
     int i = 0;
-    t.tok_type = NUM;
-    while ((t.value[i] = getc(stdin)) != EOF && i < MAX_TOK_LN) {
-        if (!is_digit(t.value[i])) {
-            ungetc(t.value[i], stdin);
-            t.value[i] = '\0';
+    t.type = NUM;
+    while ((t.lexeme[i] = getc(stdin)) != EOF && i < MAX_TOK_LN) {
+        if (!is_digit(t.lexeme[i])) {
+            ungetc(t.lexeme[i], stdin);
+            t.lexeme[i] = '\0';
+            return 1;
         }
-        if (t.value[i] == EOF) {
-            t.value[i] = '\0';
+        if (t.lexeme[i] == EOF) {
+            t.lexeme[i] = '\0';
         }
         i++;
     }
