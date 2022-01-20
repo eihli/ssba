@@ -1,111 +1,63 @@
-/* I want to write my compiler toolchain in C such that I can pipe the output from one step into the input of another step. cat foo.cal | ./scan | ./parse | ./eval. Let's not dig into why just yet. */
-
-/* Problem is it's convenient for the parser to get "typed" tokens from the scanner. In both the solution and in Crafting Interpreters, the scanner already read the string "3.14", and it's a trivial step to store the numeric lexeme right there too since you know it will be needed for later stages.  */
-
-/* But it's like... whatever I choose to pipe from the scanner to the parser, the parser is going to have to know how to turn that format back into the C data structures that I need. */
-
-/* I'm basically just taking the string  "3 * (4 + 5)" and turning it into a string "<NUM '3'> <MUL '*'> <OPEN_P '('> ...etc" which the parser has to then re-read back into C data structures. I guess my scanner normalizes whitespace and can report some errors, so my parser has a little bit of an easier time reading it. And I guess if I was pulling in external libraries I could output a structure, like XML, that already has parsing libraries written for it. */
-
+#include <ctype.h>
+#include <stdlib.h>
 #include <stdio.h>
-
+#include <string.h>
 #include "lex.h"
 
-#define MAX_TOK_LN  50
+#define MAX_TOKEN_LENGTH 100
 
-const char* enum_names[] = {
-    "SUB",
-    "ADD",
-    "DIV",
-    "MUL",
-    "OPEN_PAREN",
-    "CLOSE_PAREN",
-    "NUM",
-    "DECIMAL",
-    "STRING",
-    "IDENTIFIER"
-};
+char lexeme[MAX_LEXEME_LENGTH];
 
-static token t;
-
-int next_token();
-int scan_number();
-
-void print_tok()
+Token *make_token(TokenType type, char *lexeme)
 {
-    printf("<%s %d %s>\n", enum_names[t.type], t.type, t.lexeme);
+    Token *token = malloc(sizeof(Token));
+    token->type = type;
+    strcpy(token->lexeme, lexeme);
+    return token;
 }
 
-int main()
+Token *lex(FILE *file)
 {
-    int r;
-    while ((r = next_token() != 0)) {
-        print_tok();
-    }
-}
-
-int next_token()
-{
-    char c = getc(stdin);
-    switch (c) {
-        case EOF:
-            return 0;
-        case '\n':
-            return next_token();
-        case ' ':
-            return next_token();
-        case '-':
-            t = (token) { SUB, "-"};
-            break;
-        case '+':
-            t = (token) { ADD, "+"};
-            break;
-        case '*':
-            t = (token) { MUL, "*"};
-            break;
-        case '/':
-            t = (token) { DIV, "/"};
-            break;
-        case '(':
-            t = (token) { OPEN_PAREN, "("};
-            break;
-        case ')':
-            t = (token) { CLOSE_PAREN, ")"};
-            break;
-        default:
-            if ('0' <= c && c <= '9') {
-                ungetc(c, stdin);
-                scan_number();
+    Token *tokens = malloc(MAX_TOKEN_LENGTH * sizeof(Token));
+    char c;
+    int token_count = 0;
+    while ((c = getc(file)) != EOF) {
+        if (isblank(c)) {
+            continue;
+        } else if (isdigit(c)) {
+            int i = 0;
+            lexeme[i++] = c;
+            while (isdigit(c = getc(file))) {
+                lexeme[i++] = c;
             }
-    }
-    return 1;
-}
-
-int is_whitespace(c) {
-    return (
-        c == ' '
-        || c == '\t'
-        || c == '\n'
-    );
-}
-
-int is_digit(c) {
-    return '0' <= c && c <= '9';
-}
-
-int scan_number()
-{
-    int i = 0;
-    t.type = NUM;
-    while ((t.lexeme[i] = getc(stdin)) != EOF && i < MAX_TOK_LN) {
-        if (!is_digit(t.lexeme[i])) {
-            ungetc(t.lexeme[i], stdin);
-            t.lexeme[i] = '\0';
-            return 1;
+            lexeme[i] = '\0';
+            ungetc(c, file);
+            tokens[token_count++] = *make_token(NUM, lexeme);
+        } else {
+            switch (c) {
+                case '+':
+                    tokens[token_count++] = *make_token(ADD, &c);
+                    break;
+                case '-':
+                    tokens[token_count++] = *make_token(SUB, &c);
+                    break;
+                case '*':
+                    tokens[token_count++] = *make_token(MUL, &c);
+                    break;
+                case '/':
+                    tokens[token_count++] = *make_token(DIV, &c);
+                    break;
+                case '(':
+                    tokens[token_count++] = *make_token(OPEN_PAREN, &c);
+                    break;
+                case ')':
+                    tokens[token_count++] = *make_token(CLOSE_PAREN, &c);
+                    break;
+                default:
+                    ;
+            }
         }
-        if (t.lexeme[i] == EOF) {
-            t.lexeme[i] = '\0';
-        }
-        i++;
     }
-    return 1;
+    return tokens;
 }
+
