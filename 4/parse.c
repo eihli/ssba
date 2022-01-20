@@ -45,6 +45,7 @@ void term();
 void factor();
 void rest();
 void term_rest();
+void pad(char, int);
 
 ast_node *parse_expr(FILE *stream);
 
@@ -56,21 +57,38 @@ int main()
 
 void expr()
 {
-    printf("EXPR\n");
+    token *t = malloc(sizeof(token));
+    if (lookahead.type == NUM) {
+        memcpy(t, &lookahead, sizeof(token));
+    }
     term();
+    pad(' ', depth);
+    printf("%s\n", enum_names[lookahead.type]);
+    depth++;
+    pad(' ', depth);
+    printf("%s\n", t->lexeme);
     rest();
+    depth--;
 }
 
 void term()
 {
-    printf("TERM\n");
+    token *t = malloc(sizeof(token));
+    if (lookahead.type == NUM) {
+        memcpy(t, &lookahead, sizeof(token));
+    }
     factor();
+    pad(' ', depth);
+    printf("%s\n", enum_names[lookahead.type]);
+    depth++;
+    pad(' ', depth);
+    printf("%s\n", t->lexeme);
     term_rest();
+    depth--;
 }
 
 void factor()
 {
-    printf("FACTOR\n");
     switch (lookahead.type) {
         case OPEN_PAREN:
             match(OPEN_PAREN);
@@ -87,7 +105,6 @@ void factor()
 
 void rest()
 {
-    printf("REST\n");
     switch (lookahead.type) {
         case ADD:
         case SUB:
@@ -95,13 +112,12 @@ void rest()
             term();
             break;
         default:
-            ;
+            printf("Expected + or - but got %s\n", enum_names[lookahead.type]);
     }
 }
 
 void term_rest()
 {
-    printf("TERM_REST\n");
     switch (lookahead.type) {
         case MUL:
         case DIV:
@@ -124,7 +140,6 @@ int match(token_type type)
         read_tok();
         return 0;
     }
-    printf("Matched %s\n", enum_names[type]);
     read_tok();
     return 1;
 }
@@ -153,31 +168,25 @@ int read_tok()
 }
 
 
-void out(char* msg) {
-    for (int i = 0; i < depth; i++)
-        printf("\t");
-    printf("%s\n", msg);
+void pad(char c, int n) {
+    for (int i = 0; i < n; i++)
+        putc(c, stdout);
 }
 
 void parse_expression()
 {
     depth++;
-    out("EXPRESSION");
     read_token();
     if (parse_result.type == OPEN_PAREN) {
-        out("OPEN_PAREN");
         parse_expression();
         read_token(); // CLOSE_PAREN
-        out("CLOSE_PAREN");
     } else {
         parse_term();
         if (parse_result.type == ADD) {
             read_token();
-            out("ADD");
             parse_term();
         } else if (parse_result.type == SUB) {
             read_token();
-            out("SUB");
             parse_term();
         }
     }
@@ -187,13 +196,12 @@ void parse_expression()
 void parse_term()
 {
     depth++;
-    out("TERM");
     parse_number();
     read_token();
     if (parse_result.type == MUL)
-        out("MUL");
+        printf("MUL\n");
     if (parse_result.type == DIV)
-        out("DIV");
+        printf("DIV\n");
     if (parse_result.type == MUL || parse_result.type == DIV) {
         read_token();
         parse_expression();
@@ -206,7 +214,6 @@ void parse_number()
     depth++;
     char msg[50] = "NUM ";
     strcat(msg, parse_result.lexeme);
-    out(msg);
     depth--;
 }
 
