@@ -58,6 +58,9 @@ Token *lex(FILE *file)
             }
         }
     }
+    Token *tail = malloc(sizeof(Token));
+    tail->lexeme[0] = '\0';
+    tokens[token_count] = *tail;
     return tokens;
 }
 

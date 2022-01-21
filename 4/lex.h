@@ -24,4 +24,6 @@ extern const char* enum_names[];
 
 Token *lex(FILE*);
 
+Token *make_token(TokenType, char *);
+
 #endif // LEX_H_

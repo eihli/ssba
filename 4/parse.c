@@ -19,42 +19,62 @@ AstNode *make_node(Token *token)
 void append_child(AstNode *parent, AstNode *child)
 {
     AstNode *last_child = parent->children;
-    while (last_child->next_sibling != NULL) {
-        last_child = last_child->next_sibling;
-    }
-    last_child->next_sibling = child;
-}
-
-AstNode *factor(Token *tokens)
-{
-    AstNode *factor = make_node(tokens);
-
-    if (tokens->type == NUM) {
-
-    } else if (tokens->type == OPEN_PAREN) {
-
+    if (last_child == NULL) {
+        parent->children = child;
     } else {
-        printf("Unexpected token.");
-    }
-    return factor;
-}
-
-AstNode *term(Token *tokens)
-{
-    append_child(factor(tokens));
-}
-
-AstNode *expr(Token *tokens)
-{
-    AstNode *parent = make_node(tokens);
-    term();
-    while (make_node(tokens)->token.type == OP) {
-        op();
-        term();
+        while (last_child->next_sibling != NULL) {
+            last_child = last_child->next_sibling;
+        }
+        last_child->next_sibling = child;
     }
 }
 
-AstNode *parse(Token *tokens)
+void print_ast(AstNode *node, int depth)
 {
-    return expr(tokens);
+    for (int i = 0; i < depth; i++)
+        putc(' ', stdout);
+    printf("%s\n", node->token.lexeme);
+    if (node->children != NULL) {
+        depth += 2;
+        node = node->children;
+        while (node != NULL) {
+            print_ast(node, depth);
+            node = node->next_sibling;
+        }
+        depth -= 2;
+    }
 }
+
+/* AstNode *factor(Token *tokens) */
+/* { */
+/*     AstNode *factor = make_node(tokens); */
+
+/*     if (tokens->type == NUM) { */
+
+/*     } else if (tokens->type == OPEN_PAREN) { */
+
+/*     } else { */
+/*         printf("Unexpected token."); */
+/*     } */
+/*     return factor; */
+/* } */
+
+/* AstNode *term(Token *tokens) */
+/* { */
+/*     append_child(factor(tokens)); */
+/* } */
+
+/* AstNode *expr(Token *tokens) */
+/* { */
+/*     AstNode *parent = make_node(tokens); */
+/*     term(); */
+/*     while (make_node(tokens)->token.type == OP) { */
+/*         op(); */
+/*         term(); */
+/*     } */
+/* } */
+
+/* AstNode *parse(Token *tokens) */
+/* { */
+/*     return expr(tokens); */
+/* } */

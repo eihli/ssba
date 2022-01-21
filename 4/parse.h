@@ -19,5 +19,8 @@ typedef struct AstNode {
     struct AstNode *next_sibling;
 } AstNode;
 
+AstNode *make_node(Token *);
+void append_child(AstNode *, AstNode *);
+void print_ast(AstNode *, int);
 
 #endif // PARSE_H_
