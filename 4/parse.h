@@ -12,15 +12,21 @@ PAREN,
 } AstNodeType;
 
 typedef struct AstNode {
-    Token token;
+    AstNodeType type;
+    Token *token;
     struct AstNode *parent;
     struct AstNode *children;
-    int child_count;
     struct AstNode *next_sibling;
 } AstNode;
 
-AstNode *make_node(Token *);
+AstNode *make_node(AstNodeType, Token *);
 void append_child(AstNode *, AstNode *);
 void print_ast(AstNode *, int);
+void print_ast_(AstNode *, int);
+
+AstNode *expr(Token **);
+AstNode *term(Token **);
+AstNode *factor(Token **);
+AstNode *number(Token **);
 
 #endif // PARSE_H_
