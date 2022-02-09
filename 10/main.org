@@ -8,6 +8,27 @@ https://tools.ietf.org/id/draft-gharris-opsawg-pcap-00.html
 
 ** Header
 
+The File Header has the following format:
+
+#+begin_example
+                           1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    0 |                          Magic Number                         |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    4 |          Major Version        |         Minor Version         |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    8 |                           Reserved1                           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   12 |                           Reserved2                           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   16 |                            SnapLen                            |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   20 | FCS |f|                   LinkType                            |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#+end_example
+
+
 #+begin_quote
 Magic Number (32 bits):
 
@@ -70,6 +91,8 @@ Frame Cyclic Sequence present (4 bits):
 
 char buffer[BUF_LEN] = {0};
 
+<<cap-related-structs>>
+
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
@@ -95,19 +118,69 @@ if ((fd = open(argv[1], O_RDONLY)) == -1) {
 
 ** Header
 
-*** Magic Number
+Even those this is a "network" capture file, the pcap spec says that the header and records are in the endianness of the computer that generates the data. This is because the dominant use case of cap files is single host writes/reads.
 
-#+begin_quote
-Magic Number (32 bits):
+#+begin_src c :noweb-ref cap-related-structs
+typedef struct caph_t {
+    uint32_t magic_number;
+    uint16_t major_version;
+    uint16_t minor_version;
+    uint32_t snaplen;
+    uint32_t linktype;
+} caph_t;
+#+end_src
 
-    an unsigned magic number, whose value is either the hexadecimal number 0xA1B2C3D4 or the hexadecimal number 0xA1B23C4D.
-#+end_quote
+I couldn't find a description of "LinkType" values in that IETF page that describes the pcap format. I did find it at https://www.tcpdump.org/linktypes.html
 
 #+begin_src c :noweb-ref magic-number
-ssize_t sz;
-sz = read(fd, buffer, 4);
+caph_t header = {0};
+read(fd, &header.magic_number, 4);
+read(fd, &header.major_version, 2);
+read(fd, &header.minor_version, 2);
+// Skip 64 bits of "reserved" that MUST be ignored.
+lseek(fd, 8, SEEK_CUR);
+read(fd, &header.snaplen, 4);
+read(fd, &header.linktype, 4);
+printf("Magic Number: %X\n", header.magic_number);
+printf("Major Version: %hX\n", header.major_version);
+printf("Minor Version: %hX\n", header.minor_version);
+printf("Snaplen: %d\n", header.snaplen);
+printf("Linktype: %X\n", header.linktype);
+#+end_src
 
-printf("Magic Number: %X\n", ntohl(*((uint32_t *) buffer)));
+** Packet Records
+
+A Packet Record is the standard container for storing the packets coming from the network.
+
+#+begin_example
+                          1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    0 |                      Timestamp (Seconds)                      |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    4 |            Timestamp (Microseconds or nanoseconds)            |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    8 |                    Captured Packet Length                     |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   12 |                    Original Packet Length                     |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   16 /                                                               /
+      /                          Packet Data                          /
+      /                        variable length                        /
+      /                                                               /
+      +---------------------------------------------------------------+
+#+end_example
+
+When we create the struct to represent this packet record, I'm taking a moment to think about how to structure the packet data. I was initially thinking an array of uint8_t. But we won't know what the maximum length of the array should be until runtime when we parse the ~snaplen~ value from the file header. And then each packet might be a variable length below that max value of ~snaplen~. I could choose some arbitrarily large length. But I'd rather be explicit, precise, and have a good reason for the length I choose.
+
+#+begin_src c :noweb-ref packet-record-struct
+typedef struct packetrec_t {
+    uint32_t timestamp_seconds;
+    uint32_t timestamp_fractional;
+    uint32_t cap_len;
+    uint32_t orig_len;
+    uint32_t
+}
 #+end_src
 
 * Build & Test
@@ -118,4 +191,8 @@ clang -d -o parse_cap parse_cap.c
 #+end_src
 
 #+RESULTS:
-: Magic Number: D4C3B2A1
+: Magic Number: A1B2C3D4
+: Major Version: 2
+: Minor Version: 4
+: Snaplen: 1514
+: Linktype: 1
