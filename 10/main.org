@@ -1,0 +1,121 @@
+#+TITLE: "pcap" the flag
+
+* Structure of a cap file
+
+A capture file begins with a File Header, followed by zero or more Packet Records, one per packet.
+
+https://tools.ietf.org/id/draft-gharris-opsawg-pcap-00.html
+
+** Header
+
+#+begin_quote
+Magic Number (32 bits):
+
+    an unsigned magic number, whose value is either the hexadecimal number 0xA1B2C3D4 or the hexadecimal number 0xA1B23C4D.
+#+end_quote
+
+#+begin_src shell :results raw
+xxd -l 4 net.cap
+#+end_src
+
+#+RESULTS:
+00000000: d4c3 b2a1                                ....
+
+So far so good.
+
+#+begin_quote
+Major Version (16 bits):
+
+    an unsigned value, giving the number of the current major version of the format. The value for the current version of the format is 2. This value should change if the format changes in such a way that code that reads the new format could not read the old format (i.e., code to read both formats would have to check the version number and use different code paths for the two formats) and code that reads the old format could not read the new format.
+
+Minor Version (16 bits):
+
+    an unsigned value, giving the number of the current minor version of the format. The value is for the current version of the format is 4. This value should change if the format changes in such a way that code that reads the new format could read the old format without checking the version number but code that reads the old format could not read all files in the new format.
+
+Reserved1 (32 bits):
+
+    not used - SHOULD be filled with 0 by pcap file writers, and MUST be ignored by pcap file readers. This value was documented by some older implementations as "gmt to local correction". Some older pcap file writers stored non-zero values in this field.
+
+Reserved2 (32 bits):
+
+    not used - SHOULD be filled with 0 by pcap file writers, and MUST be ignored by pcap file readers. This value was documented by some older implementations as "accuracy of timestamps". Some older pcap file writers stored non-zero values in this field.
+
+SnapLen (32 bits):
+
+    an unsigned value indicating the maximum number of octets captured from each packet. The portion of each packet that exceeds this value will not be stored in the file. This value MUST NOT be zero; if no limit was specified, the value should be a number greater than or equal to the largest packet length in the file.
+
+LinkType (32 bits):
+
+    an unsigned value that defines, in the lower 28 bits, the link layer type of packets in the file.
+
+Frame Cyclic Sequence present (4 bits):
+
+    if the "f" bit is set, then the FCS bits provide the number of bytes of FCS that are appended to each packet.
+
+    valid values are between 0 and 7, with ethernet typically having a length of 4 bytes.
+#+end_quote
+
+
+* Let's start parsing
+
+#+begin_src c :noweb yes :tangle parse_cap.c
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
+
+// I don't know what the maximum length I might want to read
+// as part of parsing a cap file. But 2048 seems like a reasonable start.
+#define BUF_LEN 2048
+
+char buffer[BUF_LEN] = {0};
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2) {
+        printf("Usage: parse_cap <filename>.\n");
+        return 1;
+    }
+
+    <<open-file>>
+    <<magic-number>>
+    <<read-header>>
+}
+#+end_src
+
+#+begin_src c :noweb tangle :noweb-ref open-file
+int fd = 0;
+
+if ((fd = open(argv[1], O_RDONLY)) == -1) {
+    fprintf(stderr, "open failed %m\n");
+    return 1;
+}
+#+end_src
+
+
+** Header
+
+*** Magic Number
+
+#+begin_quote
+Magic Number (32 bits):
+
+    an unsigned magic number, whose value is either the hexadecimal number 0xA1B2C3D4 or the hexadecimal number 0xA1B23C4D.
+#+end_quote
+
+#+begin_src c :noweb-ref magic-number
+ssize_t sz;
+sz = read(fd, buffer, 4);
+
+printf("Magic Number: %X\n", ntohl(*((uint32_t *) buffer)));
+#+end_src
+
+* Build & Test
+
+#+begin_src shell :results output
+clang -d -o parse_cap parse_cap.c
+./parse_cap net.cap
+#+end_src
+
+#+RESULTS:
+: Magic Number: D4C3B2A1
