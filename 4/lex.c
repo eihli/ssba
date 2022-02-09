@@ -6,6 +6,8 @@
 
 #define MAX_TOKEN_LENGTH 100
 
+char *token_type_names[7] = {"SUB", "ADD", "DIV", "MUL", "OPEN_PAREN", "CLOSE_PAREN", "NUM"};
+
 char lexeme[MAX_LEXEME_LENGTH];
 
 Token *make_token(TokenType type, char *lexeme)
@@ -59,7 +61,7 @@ Token *lex(FILE *file)
         }
     }
     Token *tail = malloc(sizeof(Token));
-    tail->lexeme[0] = '\0';
+    *tail = (Token){0};
     tokens[token_count] = *tail;
     return tokens;
 }

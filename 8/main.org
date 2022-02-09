@@ -1,0 +1,7 @@
+#+TITLE: Main
+
+Assuming my math is correct and there's no bugs in my code, I think I'm able to allocate 50,000 megabytes on my machine? 51,000 is a segfault. I've only got 32 gig of ram and 15 gig of swap.
+
+Why is that? I would expect a max of 47gb. Is this a difference between 1024 bytes per kibibyte vs 1000 bytes per kilobyte?
+
+Also, ~free~ doesn't report any difference.

@@ -7,6 +7,8 @@
 #include "lex.h"
 #include "parse.h"
 
+char *ast_node_type_names[6] = {"EXPR", "TERM", "FACTOR", "OP", "NUMBER", "PAREN"};
+
 AstNode *make_node(AstNodeType type, Token *token)
 {
     AstNode *node = malloc(sizeof(AstNode));
@@ -51,9 +53,9 @@ void print_ast_(AstNode *node, int depth)
     for (int i = 0; i < depth; i++)
         putc(' ', stdout);
     if (node->children == NULL) {
-        printf("%d \"%s\"\n", node->type, node->token->lexeme);
+        printf("%s \"%s\"\n", ast_node_type_names[node->type], node->token->lexeme);
     } else {
-        printf("%d\n", node->type);
+        printf("%s\n", ast_node_type_names[node->type]);
     }
     if (node->children != NULL) {
         depth += 2;
@@ -69,12 +71,14 @@ void print_ast_(AstNode *node, int depth)
 AstNode *op(Token **tokens)
 {
     AstNode *o = make_node(OP, *tokens);
+    *tokens = (*tokens) + 1;
     return o;
 }
 
 AstNode *number(Token **tokens)
 {
     AstNode *n = make_node(NUMBER, *tokens);
+    *tokens = (*tokens) + 1;
     return n;
 }
 
@@ -84,9 +88,10 @@ AstNode *factor(Token **tokens)
     if ((*tokens)->type == NUM) {
         f->children = number(tokens);
     } else if ((*tokens)->type == OPEN_PAREN) {
+        *tokens = (*tokens) + 1;
         f->children = expr(tokens);
         assert((*tokens)->type == CLOSE_PAREN);
-        tokens++;
+        *tokens = (*tokens) + 1;
     } else {
         printf("Expected number or open paren");
     }
@@ -97,14 +102,11 @@ AstNode *term(Token **tokens)
 {
     AstNode *t = make_node(TERM, NULL);
     AstNode *child = factor(tokens);
-    tokens++;
     t->children = child;
     while ((*tokens)->type == MUL || (*tokens)->type == DIV) {
         child->next_sibling = op(tokens);
-        tokens++;
         child = child->next_sibling;
         child->next_sibling = term(tokens);
-        tokens++;
     }
     return t;
 }
@@ -113,14 +115,11 @@ AstNode *expr(Token **tokens)
 {
     AstNode *e = make_node(EXPR, NULL);
     AstNode *child = term(tokens);
-    tokens++;
     e->children = child;
     while ((*tokens)->type == ADD || (*tokens)->type == SUB) {
         child->next_sibling = op(tokens);
-        tokens++;
         child = child->next_sibling;
         child->next_sibling = term(tokens);
-        tokens++;
     }
     return e;
 }
