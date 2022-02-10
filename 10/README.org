@@ -1,5 +1,35 @@
 #+TITLE: "pcap" the flag
 
+* Example
+
+#+begin_src shell :exports both :results output raw
+./parse_cap net.cap | head -n20
+#+end_src
+
+#+RESULTS:
+Magic Number: A1B2C3D4
+Major Version: 2
+Minor Version: 4
+Snaplen: 1514
+Linktype: 1
+Packet: 0 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
+Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
+Packet: 1 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
+Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
+Packet: 2 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
+Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
+Packet: 3 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
+Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
+Packet: 4 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
+Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
+Packet: 5 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
+Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
+Packet: 6 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
+Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
+Packet: 7 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
+
+
+
 * Structure of a cap file
 
 A capture file begins with a File Header, followed by zero or more Packet Records, one per packet.
