@@ -33,6 +33,26 @@ typedef struct packetrec_t {
     uint32_t orig_len;
     uint8_t *data;
 } packetrec_t;
+// Ethernet frame
+typedef struct ethernet_frame_t {
+    uint64_t dest_mac;
+    uint64_t src_mac;
+    uint16_t type_len;
+    uint8_t *data;
+    uint32_t fcs;
+} ethernet_frame_t;
+
+ethernet_frame_t *make_ethernet_frame(uint8_t *data)
+{
+    ethernet_frame_t *frame = malloc(sizeof(ethernet_frame_t));
+    memcpy(&(frame->dest_mac), data, 6);
+    memcpy(&(frame->src_mac), data + 6, 6);
+    memcpy(&(frame->type_len), data + 12, 2);
+    frame->data = malloc(frame->type_len);
+    memcpy(frame->data, data + 14, frame->type_len);
+    memcpy(&(frame->fcs), data + 14 + frame->type_len, 4);
+    return frame;
+}
 
 int num_packets = 0;
 packetrec_t packets[PACKETS_BUF_LEN] = {0};
@@ -68,15 +88,16 @@ int main(int argc, char *argv[])
     printf("Linktype: %X\n", header.linktype);
     
 
-    packetrec_t packet = {0};
     for (int i = 0; i < PACKETS_BUF_LEN && lseek(fd, 0, SEEK_CUR) < f_stat.st_size; i++) {
-        read(fd, &packet.timestamp_seconds, 4);
-        read(fd, &packet.timestamp_fractional, 4);
-        read(fd, &packet.cap_len, 4);
-        read(fd, &packet.orig_len, 4);
-        packet.data = malloc(packet.cap_len * sizeof(uint8_t));
-        read(fd, packet.data, packet.cap_len);
-        memcpy(&packets[i], &packet, sizeof(packetrec_t));
-        printf("Packet: %d \t Timestamp: %d \t Len: %d \t Orig: %d\n", i, packet.timestamp_seconds, packet.cap_len, packet.orig_len);
+        read(fd, &packets[i].timestamp_seconds, 4);
+        read(fd, &packets[i].timestamp_fractional, 4);
+        read(fd, &packets[i].cap_len, 4);
+        read(fd, &packets[i].orig_len, 4);
+        packets[i].data = malloc(packets[i].cap_len * sizeof(uint8_t));
+        read(fd, packets[i].data, packets[i].cap_len);
+        printf("Packet: %d \t Timestamp: %d \t Len: %d \t Orig: %d\n", i, packets[i].timestamp_seconds, packets[i].cap_len, packets[i].orig_len);
+        
+        ethernet_frame_t *frame = make_ethernet_frame(packets[i].data);
+        printf("Eth Frame - Dest: %lX \t Src %lX \t Len %X \n", frame->dest_mac, frame->src_mac, frame->type_len);
     }
 }
