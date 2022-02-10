@@ -83,15 +83,26 @@ Frame Cyclic Sequence present (4 bits):
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // I don't know what the maximum length I might want to read
 // as part of parsing a cap file. But 2048 seems like a reasonable start.
+// This is the buffer for the data of a single packet.
 #define BUF_LEN 2048
+
+// We can't know how many packets are in a cap file until
+// we finish parsing it, so we'll have buffer of arbitrary size for that too.
+#define PACKETS_BUF_LEN 8192
 
 char buffer[BUF_LEN] = {0};
 
 <<cap-related-structs>>
+
+int num_packets = 0;
+packetrec_t packets[PACKETS_BUF_LEN] = {0};
 
 int main(int argc, char *argv[])
 {
@@ -103,8 +114,17 @@ int main(int argc, char *argv[])
     <<open-file>>
     <<magic-number>>
     <<read-header>>
+
+    packetrec_t packet = {0};
+    for (int i = 0; i < PACKETS_BUF_LEN && lseek(fd, 0, SEEK_CUR) < f_stat.st_size; i++) {
+        <<read-packet-to-buffer>>
+    }
 }
 #+end_src
+
+File-related code.
+
+Get the size of the file using ~stat~ so we can know if we've read to the end.
 
 #+begin_src c :noweb tangle :noweb-ref open-file
 int fd = 0;
@@ -113,6 +133,9 @@ if ((fd = open(argv[1], O_RDONLY)) == -1) {
     fprintf(stderr, "open failed %m\n");
     return 1;
 }
+
+struct stat f_stat;
+fstat(fd, &f_stat);
 #+end_src
 
 
@@ -121,6 +144,7 @@ if ((fd = open(argv[1], O_RDONLY)) == -1) {
 Even those this is a "network" capture file, the pcap spec says that the header and records are in the endianness of the computer that generates the data. This is because the dominant use case of cap files is single host writes/reads.
 
 #+begin_src c :noweb-ref cap-related-structs
+// Captured packet header
 typedef struct caph_t {
     uint32_t magic_number;
     uint16_t major_version;
@@ -173,14 +197,29 @@ A Packet Record is the standard container for storing the packets coming from th
 
 When we create the struct to represent this packet record, I'm taking a moment to think about how to structure the packet data. I was initially thinking an array of uint8_t. But we won't know what the maximum length of the array should be until runtime when we parse the ~snaplen~ value from the file header. And then each packet might be a variable length below that max value of ~snaplen~. I could choose some arbitrarily large length. But I'd rather be explicit, precise, and have a good reason for the length I choose.
 
-#+begin_src c :noweb-ref packet-record-struct
+So, I'll ~malloc~ to a ~uint8_t~ with size of the captured packet length.
+
+#+begin_src c :noweb-ref cap-related-structs
+// Packet record
 typedef struct packetrec_t {
     uint32_t timestamp_seconds;
     uint32_t timestamp_fractional;
     uint32_t cap_len;
     uint32_t orig_len;
-    uint32_t
-}
+    uint8_t *data;
+} packetrec_t;
+#+end_src
+
+
+#+begin_src c :noweb-ref read-packet-to-buffer
+read(fd, &packet.timestamp_seconds, 4);
+read(fd, &packet.timestamp_fractional, 4);
+read(fd, &packet.cap_len, 4);
+read(fd, &packet.orig_len, 4);
+packet.data = malloc(packet.cap_len * sizeof(uint8_t));
+read(fd, packet.data, packet.cap_len);
+memcpy(&packets[i], &packet, sizeof(packetrec_t));
+printf("Packet: %d \t Timestamp: %d \t Len: %d \t Orig: %d\n", i, packet.timestamp_seconds, packet.cap_len, packet.orig_len);
 #+end_src
 
 * Build & Test
