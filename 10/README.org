@@ -131,7 +131,7 @@ Frame Cyclic Sequence present (4 bits):
 char buffer[BUF_LEN] = {0};
 
 <<cap-related-structs>>
-
+<<frame-type-identifiers>>
 <<ethernet-frame>>
 
 int num_packets = 0;
@@ -252,36 +252,69 @@ packets[i].data = malloc(packets[i].cap_len * sizeof(uint8_t));
 read(fd, packets[i].data, packets[i].cap_len);
 printf("Packet: %d \t Timestamp: %d \t Len: %d \t Orig: %d\n", i, packets[i].timestamp_seconds, packets[i].cap_len, packets[i].orig_len);
 
-ethernet_frame_t *frame = make_ethernet_frame(packets[i].data);
-printf("Eth Frame - Dest: %lX \t Src %lX \t Len %X \n", frame->dest_mac, frame->src_mac, frame->type_len);
+ethernet_frame_t *frame = make_ethernet_frame(packets[i].data, packets[i].cap_len);
+printf(
+    "Eth Frame - Dest: %02X:%02X:%02X:%02X:%02X:%02X \t Src %02X:%02X:%02X:%02X:%02X:%02X \t Len %d \n",
+    frame->dest_mac[0],
+    frame->dest_mac[1],
+    frame->dest_mac[2],
+    frame->dest_mac[3],
+    frame->dest_mac[4],
+    frame->dest_mac[5],
+    frame->src_mac[0],
+    frame->src_mac[1],
+    frame->src_mac[2],
+    frame->src_mac[3],
+    frame->src_mac[4],
+    frame->src_mac[5],
+    packets[i].cap_len
+);
 #+end_src
 
 
 * Parsing an Ethernet frame
+
+** Ethernet frame types
+
+There's different types of ethernet frames. We can detect them by looking for certain bytes in the frame.
+
+https://en.wikipedia.org/wiki/IEEE_802.1Q
+
+#+ATTR_ORG: :width 800
+[[file:./etherframe.png]]
+
+#+begin_src c :noweb-ref frame-type-identifiers
+uint8_t F_8021Q[2] = {0x81, 0x00};
+uint8_t F_IPV4[2] = {0x08, 0x00};
+uint8_t F_IPV6[2] = {0x86, 0xDD};
+uint8_t F_ARP[2] = {0x08, 0x06};
+#+end_src
 
 ** Ethernet frame struct
 
 #+begin_src c :noweb-ref cap-related-structs
 // Ethernet frame
 typedef struct ethernet_frame_t {
-    uint64_t dest_mac;
-    uint64_t src_mac;
-    uint16_t type_len;
+    uint8_t dest_mac[6];
+    uint8_t src_mac[6];
+    uint8_t type_len[2];
     uint8_t *data;
-    uint32_t fcs;
+    uint8_t fcs[4];
 } ethernet_frame_t;
 #+end_src
 
 #+begin_src c :noweb-ref ethernet-frame
-ethernet_frame_t *make_ethernet_frame(uint8_t *data)
+ethernet_frame_t *make_ethernet_frame(uint8_t *data, int size)
 {
     ethernet_frame_t *frame = malloc(sizeof(ethernet_frame_t));
     memcpy(&(frame->dest_mac), data, 6);
     memcpy(&(frame->src_mac), data + 6, 6);
     memcpy(&(frame->type_len), data + 12, 2);
-    frame->data = malloc(frame->type_len);
-    memcpy(frame->data, data + 14, frame->type_len);
-    memcpy(&(frame->fcs), data + 14 + frame->type_len, 4);
+    if (memcmp(&(frame->type_len), F_IPV4, 2) == 0) {
+        frame->data = malloc(size);
+        memcpy(frame->data, data + 14, size);
+    }
+    memcpy(&(frame->fcs), data + 14 + size, 4);
     return frame;
 }
 #+end_src
