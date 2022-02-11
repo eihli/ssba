@@ -352,7 +352,8 @@ https://en.wikipedia.org/wiki/IPv4
 
 ** Struct definition
 
-#+begin_src c :noweb-ref ipv4-struct
+#+NAME: ipv4-struct
+#+begin_src c
 typedef struct ipv4_t {
     uint8_t version_ihl;
     uint8_t dscp_ecn;
@@ -380,17 +381,11 @@ ipv4_t *parse_ipv4(uint8_t *data, int size)
 {
     ipv4_t *packet = malloc(sizeof(ipv4_t));
     packet->version_ihl = *data;
-    // memcpy(&packet->version_ihl, data, 1);
     packet->dscp_ecn = *(data + 1);
-    // memcpy(&packet->dscp_ecn, data + 1, 1);
     packet->total_len = ntohs(*(data + 2));
-    // memcpy(&packet->total_len, data + 2, 2);
     packet->proto = *(data + 9);
-    // memcpy(&packet->proto, data + 9, 1);
     packet->source_addr = ntohl(*(uint32_t *) (data + 12));
-    // memcpy(&packet->source_addr, data + 12, 4);
     packet->dest_addr = ntohl(*(uint32_t *) (data + 16));
-    // memcpy(&packet->dest_addr, data + 16, 4);
     return packet;
 }
 #+end_src

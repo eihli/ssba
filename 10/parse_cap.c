@@ -90,17 +90,11 @@ ipv4_t *parse_ipv4(uint8_t *data, int size)
 {
     ipv4_t *packet = malloc(sizeof(ipv4_t));
     packet->version_ihl = *data;
-    // memcpy(&packet->version_ihl, data, 1);
     packet->dscp_ecn = *(data + 1);
-    // memcpy(&packet->dscp_ecn, data + 1, 1);
     packet->total_len = ntohs(*(data + 2));
-    // memcpy(&packet->total_len, data + 2, 2);
     packet->proto = *(data + 9);
-    // memcpy(&packet->proto, data + 9, 1);
     packet->source_addr = ntohl(*(uint32_t *) (data + 12));
-    // memcpy(&packet->source_addr, data + 12, 4);
     packet->dest_addr = ntohl(*(uint32_t *) (data + 16));
-    // memcpy(&packet->dest_addr, data + 16, 4);
     return packet;
 }
 
