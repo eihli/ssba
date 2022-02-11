@@ -3,9 +3,10 @@
 * Example
 
 #+begin_src shell :exports both :results output
-./parse_cap net.cap | head -n20
+./parse_cap net.cap
 #+end_src
 
+#+RESULTS:
 #+begin_example
 Magic Number: A1B2C3D4
 Major Version: 2
@@ -13,20 +14,11 @@ Minor Version: 4
 Snaplen: 1514
 Linktype: 1
 Packet: 0 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
-Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
-Packet: 1 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
-Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
-Packet: 2 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
-Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
-Packet: 3 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
-Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
-Packet: 4 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
-Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
-Packet: 5 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
-Eth Frame - Dest: 1B2EDF605EA4 	 Src 28608784E9C4 	 Len 8
-Packet: 6 	 Timestamp: 1473288256 	 Len: 78 	 Orig: 78
-Eth Frame - Dest: 28608784E9C4 	 Src 1B2EDF605EA4 	 Len 8
-Packet: 7 	 Timestamp: 1473288256 	 Len: 76 	 Orig: 76
+Eth Frame - Dest: C4:E9:84:87:60:28 	 Src A4:5E:60:DF:2E:1B 	 Len 78
+# ...
+IPV4 - Source: 192.168.0.101 	 Dest: 192.30.252.154
+IPV4 - Source: 192.30.252.154 	 Dest: 192.168.0.101
+IPV4 - Source: 192.168.0.101 	 Dest: 192.30.252.154
 #+end_example
 
 
