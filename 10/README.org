@@ -119,23 +119,31 @@ Frame Cyclic Sequence present (4 bits):
 #include <sys/stat.h>
 #include <unistd.h>
 
-// I don't know what the maximum length I might want to read
-// as part of parsing a cap file. But 2048 seems like a reasonable start.
-// This is the buffer for the data of a single packet.
-#define BUF_LEN 2048
+/*
+ ,* We can't know how many packets are in a cap file until we finish parsing it,
+ ,* so we'll have buffer of arbitrary size.
+ ,*
+ ,* I'm going to keep separate buffers for each unwrapping of the packet for now.
+ ,* It might make more sense to have a single buffer for each packet and have
+ ,* each outer layer point to a data structure of the parsed inner layer. But
+ ,* what the heck... stuff just happens.
+ ,*/
+#define PACKET_BUF_LEN 8192
 
-// We can't know how many packets are in a cap file until
-// we finish parsing it, so we'll have buffer of arbitrary size for that too.
-#define PACKETS_BUF_LEN 8192
-
-char buffer[BUF_LEN] = {0};
 
 <<cap-related-structs>>
+
 <<frame-type-identifiers>>
+
 <<ethernet-frame>>
 
-int num_packets = 0;
-packetrec_t packets[PACKETS_BUF_LEN] = {0};
+<<ipv4-struct>>
+
+<<ipv4-parse>>
+
+packetrec_t packets[PACKET_BUF_LEN] = {0};
+ethernet_frame_t ethernet_frames[PACKET_BUF_LEN] = {0};
+ipv4_t ip_packets[PACKET_BUF_LEN] = {0};
 
 int main(int argc, char *argv[])
 {
@@ -145,12 +153,16 @@ int main(int argc, char *argv[])
     }
 
     <<open-file>>
-    <<magic-number>>
-    <<read-header>>
 
-    for (int i = 0; i < PACKETS_BUF_LEN && lseek(fd, 0, SEEK_CUR) < f_stat.st_size; i++) {
+    <<pcap-header>>
+
+    int i;
+    for (i = 0; i < PACKET_BUF_LEN && lseek(fd, 0, SEEK_CUR) < f_stat.st_size; i++) {
         <<read-packet-to-buffer>>
     }
+    int num_packets = i;
+
+    <<parse-ip-packets>>
 }
 #+end_src
 
@@ -176,7 +188,7 @@ fstat(fd, &f_stat);
 Even those this is a "network" capture file, the pcap spec says that the header and records are in the endianness of the computer that generates the data. This is because the dominant use case of cap files is single host writes/reads.
 
 #+begin_src c :noweb-ref cap-related-structs
-// Captured packet header
+// pcap header
 typedef struct caph_t {
     uint32_t magic_number;
     uint16_t major_version;
@@ -184,11 +196,12 @@ typedef struct caph_t {
     uint32_t snaplen;
     uint32_t linktype;
 } caph_t;
+
 #+end_src
 
 I couldn't find a description of "LinkType" values in that IETF page that describes the pcap format. I did find it at https://www.tcpdump.org/linktypes.html
 
-#+begin_src c :noweb-ref magic-number
+#+begin_src c :noweb-ref pcap-header
 caph_t header = {0};
 read(fd, &header.magic_number, 4);
 read(fd, &header.major_version, 2);
@@ -240,6 +253,7 @@ typedef struct packetrec_t {
     uint32_t orig_len;
     uint8_t *data;
 } packetrec_t;
+
 #+end_src
 
 
@@ -253,6 +267,7 @@ read(fd, packets[i].data, packets[i].cap_len);
 printf("Packet: %d \t Timestamp: %d \t Len: %d \t Orig: %d\n", i, packets[i].timestamp_seconds, packets[i].cap_len, packets[i].orig_len);
 
 ethernet_frame_t *frame = make_ethernet_frame(packets[i].data, packets[i].cap_len);
+memcpy(&ethernet_frames[i], frame, sizeof(ethernet_frame_t));
 printf(
     "Eth Frame - Dest: %02X:%02X:%02X:%02X:%02X:%02X \t Src %02X:%02X:%02X:%02X:%02X:%02X \t Len %d \n",
     frame->dest_mac[0],
@@ -274,7 +289,7 @@ printf(
 
 * Parsing an Ethernet frame
 
-** Ethernet frame types
+** Ethernet frame format
 
 There's different types of ethernet frames. We can detect them by looking for certain bytes in the frame.
 
@@ -290,6 +305,7 @@ uint8_t F_IPV6[2] = {0x86, 0xDD};
 uint8_t F_ARP[2] = {0x08, 0x06};
 #+end_src
 
+
 ** Ethernet frame struct
 
 #+begin_src c :noweb-ref cap-related-structs
@@ -300,9 +316,13 @@ typedef struct ethernet_frame_t {
     uint8_t type_len[2];
     uint8_t *data;
     uint8_t fcs[4];
+    uint16_t size; // Size of data segment
 } ethernet_frame_t;
+
 #+end_src
 
+
+** Ethernet frame parse function
 #+begin_src c :noweb-ref ethernet-frame
 ethernet_frame_t *make_ethernet_frame(uint8_t *data, int size)
 {
@@ -310,12 +330,96 @@ ethernet_frame_t *make_ethernet_frame(uint8_t *data, int size)
     memcpy(&(frame->dest_mac), data, 6);
     memcpy(&(frame->src_mac), data + 6, 6);
     memcpy(&(frame->type_len), data + 12, 2);
+    frame->size = size;
     if (memcmp(&(frame->type_len), F_IPV4, 2) == 0) {
         frame->data = malloc(size);
         memcpy(frame->data, data + 14, size);
+    } else {
+        printf("Unhandeled frame type %02X%02x", frame->type_len[0], frame->type_len[1]);
+        exit(1);
     }
     memcpy(&(frame->fcs), data + 14 + size, 4);
     return frame;
+}
+#+end_src
+
+
+* Parsing an IP packet
+
+Unlike the Ethernet frame header, the IP header /does/ have an endianness. IP is the first layer that uses the network byte order (big-endian). So, we'll need ~ntoh~ (network-to-host) functions.
+
+Also, with the Ethernet frame, we had to deal with MAC addresses which were 6 bytes and C doesn't really have a uint48_t type so we had to use a byte buffer. All of the IP header fields are numbers, so instead of using ~memcpy~ to read the data into the struct, we'll just assign with ~ntoh[sl]~.
+
+** Header format
+
+https://en.wikipedia.org/wiki/IPv4
+
+#+ATTR_ORG: :width 800
+[[file:./ipv4.png]]
+
+
+** Struct definition
+
+#+begin_src c :noweb-ref ipv4-struct
+typedef struct ipv4_t {
+    uint8_t version_ihl;
+    uint8_t dscp_ecn;
+    uint16_t total_len;
+    uint16_t idenfication;
+    uint16_t flags_offset;
+    uint8_t ttl;
+    uint8_t proto;
+    uint16_t checksum;
+    uint32_t source_addr;
+    uint32_t dest_addr;
+    uint8_t *options; // Length determined by IHL field
+    uint8_t *data;
+    uint16_t size; // data size, total_len - header len (IHL);
+} ipv4_t;
+#+end_src
+
+The length of the data will be the total length minus the IHL
+
+
+** Parsing function
+
+#+begin_src c :noweb-ref ipv4-parse
+ipv4_t *parse_ipv4(uint8_t *data, int size)
+{
+    ipv4_t *packet = malloc(sizeof(ipv4_t));
+    packet->version_ihl = *data;
+    // memcpy(&packet->version_ihl, data, 1);
+    packet->dscp_ecn = *(data + 1);
+    // memcpy(&packet->dscp_ecn, data + 1, 1);
+    packet->total_len = ntohs(*(data + 2));
+    // memcpy(&packet->total_len, data + 2, 2);
+    packet->proto = *(data + 9);
+    // memcpy(&packet->proto, data + 9, 1);
+    packet->source_addr = ntohl(*(uint32_t *) (data + 12));
+    // memcpy(&packet->source_addr, data + 12, 4);
+    packet->dest_addr = ntohl(*(uint32_t *) (data + 16));
+    // memcpy(&packet->dest_addr, data + 16, 4);
+    return packet;
+}
+#+end_src
+
+
+** Reading IP data from Ethernet frames
+
+#+begin_src c :noweb-ref parse-ip-packets
+for (int i = 0; i < num_packets; i++) {
+    ipv4_t *packet = parse_ipv4(ethernet_frames[i].data, ethernet_frames[i].size);
+    printf(
+        "IPV4 - Source: %hd.%hd.%hd.%hd \t Dest: %hd.%hd.%hd.%hd\n",
+        (unsigned char) (packet->source_addr >> 24 & 0xFF),
+        (unsigned char) ((packet->source_addr >> 16) & 0xFF),
+        (unsigned char) ((packet->source_addr >> 8) & 0xFF),
+        (unsigned char) (packet->source_addr & 0xFF),
+        (unsigned char) (packet->dest_addr >> 24 & 0xFF),
+        (unsigned char) ((packet->dest_addr >> 16) & 0xFF),
+        (unsigned char) ((packet->dest_addr >> 8) & 0xFF),
+        (unsigned char) (packet->dest_addr & 0xFF)
+    );
 }
 #+end_src
 
