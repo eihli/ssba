@@ -1,10 +1,10 @@
-// arpa/inet.h has the inet_pton function which creates structs
-// from the "presentation" representation of an address - "192.168.1.0".
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <string.h>
 #include <linux/in.h>
+// arpa/inet.h has the inet_pton function which creates structs
+// from the "presentation" representation of an address - "192.168.1.0".
 
 int main(int argc, char *argv[])
 {
