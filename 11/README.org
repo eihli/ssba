@@ -1,0 +1,116 @@
+#+TITLE: DNS Client
+
+* Structure of ~main~
+
+#+begin_src c :exports yes :noweb yes :tangle dns.c
+// arpa/inet.h has the inet_pton function which creates structs
+// from the "presentation" representation of an address - "192.168.1.0".
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <stdio.h>
+#include <string.h>
+#include <linux/in.h>
+
+int main(int argc, char *argv[])
+{
+    <<create-socket>>
+
+    <<bind>>
+
+    <<send>>
+}
+#+end_src
+
+* Opening a socket
+
+~socket~ returns an int - a file descriptor.
+
+The main difference between sockets and files is that the operating system binds file descriptors to a file or device when the open() call creates the file descriptor. With sockets, application programs can choose to either specify the destination each time they use the socket - for example, when sending datagrams - or to bind the destination address to the socket.
+
+#+begin_src c :noweb-ref create-socket
+int socket_fd;
+
+if ((socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+    perror("Error creating socket.");
+#+end_src
+
+* Binding a socket
+- [ ] Question: Why are the socket and bind steps separated? When would you want to open a socket and not bind? How can you use a socket outside of a bind?
+
+Here's the bind signature from ~man 2 bind~.
+
+#+begin_example
+#include <sys/socket.h>
+
+int bind(int sockfd, const struct sockaddr *addr,
+        socklen_t addrlen);
+#+end_example
+
+And the description states:
+
+#+begin_example
+The actual structure passed for the addr argument will depend on the address family.  The sockaddr structure is defined as something like:
+
+    struct sockaddr {
+        sa_family_t sa_family;
+        char        sa_data[14];
+    }
+#+end_example
+
+Beej's Guide to Networking explains ~sockaddr~, ~sa_family~, and ~sa_data~.
+
+https://beej.us/guide/bgnet/html/#structs
+
+#+begin_quote
+sa_family can be a variety of things, but it’ll be AF_INET (IPv4) or AF_INET6 (IPv6) for everything we do in this document. sa_data contains a destination address and port number for the socket. This is rather unwieldy since you don’t want to tediously pack the address in the sa_data by hand.
+
+To deal with struct sockaddr, programmers created a parallel structure: struct sockaddr_in (“in” for “Internet”) to be used with IPv4.
+
+And this is the important bit: a pointer to a struct sockaddr_in can be cast to a pointer to a struct sockaddr and vice-versa. So even though connect() wants a struct sockaddr*, you can still use a struct sockaddr_in and cast it at the last minute!
+#+end_quote
+
+#+begin_example
+    // (IPv4 only--see struct sockaddr_in6 for IPv6)
+
+    struct sockaddr_in {
+        short int          sin_family;  // Address family, AF_INET
+        unsigned short int sin_port;    // Port number
+        struct in_addr     sin_addr;    // Internet address
+        unsigned char      sin_zero[8]; // Same size as struct sockaddr
+    };
+#+end_example
+
+#+begin_src c :noweb-ref bind :exports yes
+struct sockaddr_in addr = {
+    .sin_family = AF_INET,
+    .sin_port = 8888, // Don't provide port, have one chosen for us.
+    .sin_addr = {0}, // Will create later with inet_pton.
+    .sin_zero = {0}
+};
+
+if (inet_pton(AF_INET, argv[1], &addr.sin_addr) != 1)
+    perror("inet_pton");
+#+end_src
+
+- [ ] Question: Beej describes ~sockaddr_in~ as having a ~sin_zero~ field. The ~linux/in.h~ header has a ~__pad~ field but then a ~#define sin_zero __pad~ right after it. Are struct field names global? How does ~#define~ work? If I use ~.sin_zero = {0}~ in a struct initialization, will ~sin_zero~ be replaced by ~__pad~?
+
+* Send
+
+#+begin_src c :noweb-ref send
+ssize_t sent;
+sent = sendto(socket_fd, argv[2], sizeof(char) * strlen(argv[2]), 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
+if (sent == -1)
+    perror("sendto");
+else
+    printf("Sent %d bytes to %s:%d by way of file descriptor %d\n", sent, inet_ntoa(addr.sin_addr), addr.sin_port, socket_fd);
+#+end_src
+
+* Testing with ~socat~
+
+I think I should be able to use the command below to listen locally for UDP on port 8888 and echo any messages received to stdout. But it's not working.
+
+#+begin_src shell
+socat -d -d -d - UDP4-LISTEN:8888,reuseaddr,fork
+#+end_src
+
+When I run ~./dns 127.0.0.1 Hello~ I just get ~Sent 5 bytes to 127.0.0.1:8888 by way of file descriptor 3~ from the program and no output from ~socat~.
