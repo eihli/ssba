@@ -7,6 +7,21 @@
 // arpa/inet.h has the inet_pton function which creates structs
 // from the "presentation" representation of an address - "192.168.1.0".
 
+#define A 0x01
+#define NS 0x02
+#define MD 0x03
+#define MF 0x04
+#define CNAME 0x05
+#define SOA 0x06
+#define MB 0x07
+#define MX 0x15
+#define TXT 0x16
+
+#define IN 0x01
+#define CS 0x02
+#define CH 0x03
+#define HS 0x04
+
 int main(int argc, char *argv[])
 {
     int socket_fd;
@@ -16,7 +31,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
-        .sin_port = 8888, // Don't provide port, have one chosen for us.
+        .sin_port = htons(53),
         .sin_addr = {0}, // Will create later with inet_pton.
         .sin_zero = {0}
     };
@@ -46,12 +61,19 @@ int main(int argc, char *argv[])
         .id = 0,
         .qr = 0,
         .opcode = 0,
-        .qdcount = 1
+        .qdcount = htons(1)
     };
     
     int sent;
     
-    uint8_t *qname = malloc(2 + strlen(argv[2]));
+    struct question_t {
+        char *qname;
+        uint16_t qtype;
+        uint16_t qclass;
+    } question;
+    
+    int qname_len = 2 + strlen(argv[2]);
+    char *qname = malloc(qname_len);
     int i, j, b;
     for (i = 0, j = 0, b = 0; i < strlen(argv[2]); i++, j++) {
         if (argv[2][i] == '.') {
@@ -65,7 +87,38 @@ int main(int argc, char *argv[])
     memcpy(&qname[b], &argv[2][i - j], j);
     qname[++i] = '\0';
     
-    sent = sendto(socket_fd, argv[2], sizeof(char) * strlen(argv[2]), 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
+    question.qname = qname;
+    question.qtype = htons(A);
+    question.qclass = htons(IN);
+    struct request_t {
+        struct header_t header;
+        struct question_t question;
+    } request;
+    
+    request = (struct request_t) {
+        .header = req_header,
+        .question = question
+    };
+    
+    // Pack the header and question into a buffer to send.
+    // Header + Question - Pointer + QNAME
+    int message_size = sizeof(struct request_t) - sizeof(void *) + qname_len;
+    uint8_t *request_msg = malloc(message_size);
+    memcpy(request_msg, &req_header, sizeof(struct header_t));
+    request_msg += sizeof(struct header_t);
+    memcpy(request_msg, question.qname, qname_len);
+    request_msg += qname_len;
+    memcpy(request_msg, &question.qtype, 2 * sizeof(uint16_t));
+    request_msg -= sizeof(struct header_t) + qname_len;
+    
+    sent = sendto(
+        socket_fd,
+        request_msg,
+        sizeof(struct request_t) - sizeof(void *) + qname_len,
+        0,
+        (struct sockaddr *) &addr,
+        sizeof(struct sockaddr_in)
+    );
     if (sent == -1)
         perror("sendto");
     else

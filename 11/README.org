@@ -13,6 +13,10 @@
 // arpa/inet.h has the inet_pton function which creates structs
 // from the "presentation" representation of an address - "192.168.1.0".
 
+<<qtypes>>
+
+<<qclass>>
+
 int main(int argc, char *argv[])
 {
     <<create-socket>>
@@ -85,7 +89,7 @@ And this is the important bit: a pointer to a struct sockaddr_in can be cast to 
 #+begin_src c :noweb-ref bind :exports yes
 struct sockaddr_in addr = {
     .sin_family = AF_INET,
-    .sin_port = 8888, // Don't provide port, have one chosen for us.
+    .sin_port = htons(53),
     .sin_addr = {0}, // Will create later with inet_pton.
     .sin_zero = {0}
 };
@@ -261,7 +265,7 @@ req_header = (struct header_t) {
     .id = 0,
     .qr = 0,
     .opcode = 0,
-    .qdcount = 1
+    .qdcount = htons(1)
 };
 #+end_src
 
@@ -314,20 +318,25 @@ QCLASS          a two octet code that specifies the class of the query.
                 For example, the QCLASS field is IN for the Internet.
 #+end_example
 
-#+begin_src c :noweb-ref question
+#+begin_src c :noweb-ref question :noweb yes
 struct question_t {
-    uint8_t *qname;
+    char *qname;
     uint16_t qtype;
     uint16_t qclass;
 } question;
 
-<<domain-to-qname>>
+<<qname>>
+
+question.qname = qname;
+question.qtype = htons(A);
+question.qclass = htons(IN);
 #+end_src
 
 *** Converting a domain name to the QNAME field
 
-#+begin_src c :noweb-ref domain-to-qname
-uint8_t *qname = malloc(2 + strlen(argv[2]));
+#+begin_src c :noweb-ref qname
+int qname_len = 2 + strlen(argv[2]);
+char *qname = malloc(qname_len);
 int i, j, b;
 for (i = 0, j = 0, b = 0; i < strlen(argv[2]); i++, j++) {
     if (argv[2][i] == '.') {
@@ -342,17 +351,76 @@ memcpy(&qname[b], &argv[2][i - j], j);
 qname[++i] = '\0';
 #+end_src
 
+*** QTYPES
 
+#+begin_src c :noweb-ref qtypes
+#define A 0x01
+#define NS 0x02
+#define MD 0x03
+#define MF 0x04
+#define CNAME 0x05
+#define SOA 0x06
+#define MB 0x07
+#define MX 0x15
+#define TXT 0x16
+#+end_src
+
+*** QCLASS
+
+#+begin_src c :noweb-ref qclass
+#define IN 0x01
+#define CS 0x02
+#define CH 0x03
+#define HS 0x04
+#+end_src
+
+* Request
+
+#+begin_src c :noweb-ref request
+struct request_t {
+    struct header_t header;
+    struct question_t question;
+} request;
+
+request = (struct request_t) {
+    .header = req_header,
+    .question = question
+};
+#+end_src
 * Send
+
+The ~question~ struct we have above has a ~qname~ field that is a pointer, because we can't know how long the domain name is until the program starts, so we have to point to some memory that
+we ~malloc~ at runtime.
+
+Therefore, we can't just concatenate the ~header~ struct with the ~question~ struct and send it over the wire. The ~header~ would be fine, because it doesn't contain any pointers. But for ~question.qname~, we need to dereference the pointer and put the bytes into the message.
 
 #+begin_src c :noweb-ref send :noweb yes
 <<header-struct>>
 
 int sent;
 
-<<domain-to-qname>>
+<<question>>
+<<request>>
 
-sent = sendto(socket_fd, argv[2], sizeof(char) * strlen(argv[2]), 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
+// Pack the header and question into a buffer to send.
+// Header + Question - Pointer + QNAME
+int message_size = sizeof(struct request_t) - sizeof(void *) + qname_len;
+uint8_t *request_msg = malloc(message_size);
+memcpy(request_msg, &req_header, sizeof(struct header_t));
+request_msg += sizeof(struct header_t);
+memcpy(request_msg, question.qname, qname_len);
+request_msg += qname_len;
+memcpy(request_msg, &question.qtype, 2 * sizeof(uint16_t));
+request_msg -= sizeof(struct header_t) + qname_len;
+
+sent = sendto(
+    socket_fd,
+    request_msg,
+    sizeof(struct request_t) - sizeof(void *) + qname_len,
+    0,
+    (struct sockaddr *) &addr,
+    sizeof(struct sockaddr_in)
+);
 if (sent == -1)
     perror("sendto");
 else
@@ -368,3 +436,24 @@ socat -d -d -d - UDP4-LISTEN:8888,reuseaddr,fork
 #+end_src
 
 When I run ~./dns 127.0.0.1 Hello~ I just get ~Sent 5 bytes to 127.0.0.1:8888 by way of file descriptor 3~ from the program and no output from ~socat~.
+
+* Debugging
+
+Here's an example of my first iteration request.
+
+#+begin_example
+0000   00 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00   ................
+0010   a0 42 54 dc ab 55 00 00 01 00 01 00 00 00 00 00   .BT..U..........
+#+end_example
+
+I'm somehow losing the "google.com" QNAME encoding.
+
+Here's an example of a successful request.
+
+#+begin_example
+0000   b8 27 eb 15 cf e0 ac 82 47 e2 87 ef 08 00 45 00   .'......G.....E.
+0010   00 3d c2 c0 40 00 40 11 f1 ae c0 a8 02 b8 c0 a8   .=..@.@.........
+0020   02 38 a4 19 00 35 00 29 86 7b 65 9e 01 00 00 01   .8...5.).{e.....
+0030   00 00 00 00 00 00 04 70 6c 61 79 06 67 6f 6f 67   .......play.goog
+0040   6c 65 03 63 6f 6d 00 00 01 00 01                  le.com.....
++end_example
