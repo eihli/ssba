@@ -7,6 +7,9 @@
 // arpa/inet.h has the inet_pton function which creates structs
 // from the "presentation" representation of an address - "192.168.1.0".
 
+// Arbitaritly chosen max receive buffer size
+#define MAX_RECV 8192
+
 #define A 0x01
 #define NS 0x02
 #define MD 0x03
@@ -21,6 +24,55 @@
 #define CS 0x02
 #define CH 0x03
 #define HS 0x04
+
+
+
+/*
+** Naming this after the inet_pton functions - presentation to network -> presentation to dns.
+** Returne buffer will be length strlen(domain);
+*/
+uint8_t *ptodns(char *domain)
+{
+    uint8_t *result = malloc(strlen(domain));
+    int i, j;
+    int end = strlen(domain);
+    for (i = 0, j = 0; i < end; i++, j++) {
+        if (domain[i] == '.') {
+            *result = j;
+            memcpy(++result, &domain[i - j], j);
+            result += j;
+            j = -1;
+        }
+    }
+    *result = j;
+    memcpy(++result, &domain[i - j], j);
+    result += j;
+    result -= i;
+    return result;
+}
+
+char *dnstop(uint8_t *dnsname)
+{
+    int len = 0;
+    while (dnsname[len])
+        len++;
+    char *domain = malloc(len * sizeof(char));
+    int read, toread;
+    read = toread = *dnsname++;
+    memcpy(domain, dnsname, toread);
+    dnsname += toread;
+    toread = *dnsname++;
+    while (toread) {
+        domain += read;
+        read = toread;
+        *domain = '.';
+        domain++;
+        memcpy(domain, dnsname, toread);
+        dnsname += toread;
+        toread = *dnsname;
+    }
+    return domain - len + read + 1;
+}
 
 int main(int argc, char *argv[])
 {
@@ -123,4 +175,40 @@ int main(int argc, char *argv[])
         perror("sendto");
     else
         printf("Sent %d bytes to %s:%d by way of file descriptor %d\n", sent, inet_ntoa(addr.sin_addr), addr.sin_port, socket_fd);
+
+    uint8_t receive_buffer[MAX_RECV];
+    
+    struct sockaddr_in addr_response = {
+        .sin_family = AF_INET,
+        .sin_port = 0,
+        .sin_addr = {0}, // Will create later with inet_pton.
+        .sin_zero = {0}
+    };
+    socklen_t addrlen = sizeof(addr_response);
+    
+    int received_len = recvfrom(
+        socket_fd,
+        receive_buffer,
+        MAX_RECV,
+        0,
+        (struct sockaddr *)&addr_response,
+        &addrlen
+    );
+    
+    printf("Received %d bytes from %s\n", received_len, inet_ntoa(addr_response.sin_addr));
+    for (int i = 0; i < received_len; i++) {
+        if (i % 16 == 0)
+            printf("\n 0x%02X\t", i);
+        printf("%02x ", receive_buffer[i]);
+    }
+    printf("\n");
+    
+    memcpy(&res_header, receive_buffer, 4);
+    res_header.ancount = ntohs(*((uint16_t *) (receive_buffer + 6)));
+    
+    char *domain = dnstop(receive_buffer + 12);
+    printf("Found answer for domain %s.\n", domain);
+    for (int i = 0; i < res_header.ancount; i++) {
+    
+    }
 }
