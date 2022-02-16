@@ -208,7 +208,24 @@ int main(int argc, char *argv[])
     
     char *domain = dnstop(receive_buffer + 12);
     printf("Found answer for domain %s.\n", domain);
-    for (int i = 0; i < res_header.ancount; i++) {
+    uint16_t type = *(uint16_t *) receive_buffer + 12 + strlen(domain);
+    type = ntohs(type);
+    uint16_t class = *(uint16_t *) receive_buffer + 12 + strlen(domain) + 2;
+    class = ntohs(class);
+    uint32_t ttl = *(uint32_t *) receive_buffer + 12 + strlen(domain) + 4;
+    ttl = ntohs(ttl);
+    uint16_t rdlen = *(uint16_t *) receive_buffer + 12 + strlen(domain) + 8;
+    rdlen = ntohs(rdlen);
+    uint8_t *rdata = malloc(rdlen);
+    memcpy(rdata, receive_buffer + 12 + strlen(domain) + 10, rdlen);
     
-    }
+    printf(
+        "IPV4 - Source: %hd.%hd.%hd.%hd\n",
+        (unsigned char) (*rdata >> 24 & 0xFF),
+        (unsigned char) ((*rdata >> 16) & 0xFF),
+        (unsigned char) ((*rdata >> 8) & 0xFF),
+        (unsigned char) (*rdata & 0xFF)
+    );
+    
+    
 }
