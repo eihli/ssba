@@ -116,7 +116,7 @@ AstNode *expr(Token **tokens)
     AstNode *e = make_node(EXPR, NULL);
     AstNode *child = term(tokens);
     e->children = child;
-    while ((*tokens)->type == ADD || (*tokens)->type == SUB) {
+    while (tokens != NULL) {
         child->next_sibling = op(tokens);
         child = child->next_sibling;
         child->next_sibling = term(tokens);
@@ -124,37 +124,3 @@ AstNode *expr(Token **tokens)
     return e;
 }
 
-
-/* AstNode *factor(Token *tokens) */
-/* { */
-/*     AstNode *factor = make_node(tokens); */
-
-/*     if (tokens->type == NUM) { */
-
-/*     } else if (tokens->type == OPEN_PAREN) { */
-
-/*     } else { */
-/*         printf("Unexpected token."); */
-/*     } */
-/*     return factor; */
-/* } */
-
-/* AstNode *term(Token *tokens) */
-/* { */
-/*     append_child(factor(tokens)); */
-/* } */
-
-/* AstNode *expr(Token *tokens) */
-/* { */
-/*     AstNode *parent = make_node(tokens); */
-/*     term(); */
-/*     while (make_node(tokens)->token.type == OP) { */
-/*         op(); */
-/*         term(); */
-/*     } */
-/* } */
-
-/* AstNode *parse(Token *tokens) */
-/* { */
-/*     return expr(tokens); */
-/* } */

@@ -4,26 +4,35 @@
 #include <string.h>
 #include "lex.h"
 
-#define MAX_TOKEN_LENGTH 100
+#define INITIAL_TOKEN_LEN 1
 
 char *token_type_names[7] = {"SUB", "ADD", "DIV", "MUL", "OPEN_PAREN", "CLOSE_PAREN", "NUM"};
 
 char lexeme[MAX_LEXEME_LENGTH];
+int token_count = 0;
 
 Token *make_token(TokenType type, char *lexeme)
 {
     Token *token = malloc(sizeof(Token));
+    token_count++;
     token->type = type;
     strcpy(token->lexeme, lexeme);
     return token;
 }
 
-Token *lex(FILE *file)
+Token **lex(FILE *file)
 {
-    Token *tokens = malloc(MAX_TOKEN_LENGTH * sizeof(Token));
+    int size = INITIAL_TOKEN_LEN;
+    Token **head, **tokens = malloc(size * sizeof(void *));
+    head = tokens;
     char c;
-    int token_count = 0;
     while ((c = getc(file)) != EOF) {
+        if (token_count == size) {
+            printf("Bumping size\n");
+            size *= 2;
+            *head = *tokens = realloc(head, size);
+            *tokens += size / 2;
+        }
         if (isblank(c)) {
             continue;
         } else if (isdigit(c)) {
@@ -34,35 +43,33 @@ Token *lex(FILE *file)
             }
             lexeme[i] = '\0';
             ungetc(c, file);
-            tokens[token_count++] = *make_token(NUM, lexeme);
+            *tokens++ = make_token(NUM, lexeme);
         } else {
             switch (c) {
                 case '+':
-                    tokens[token_count++] = *make_token(ADD, &c);
+                    *tokens++ = make_token(ADD, &c);
                     break;
                 case '-':
-                    tokens[token_count++] = *make_token(SUB, &c);
+                    *tokens++ = make_token(SUB, &c);
                     break;
                 case '*':
-                    tokens[token_count++] = *make_token(MUL, &c);
+                    *tokens++ = make_token(MUL, &c);
                     break;
                 case '/':
-                    tokens[token_count++] = *make_token(DIV, &c);
+                    *tokens++ = make_token(DIV, &c);
                     break;
                 case '(':
-                    tokens[token_count++] = *make_token(OPEN_PAREN, &c);
+                    *tokens++ = make_token(OPEN_PAREN, &c);
                     break;
                 case ')':
-                    tokens[token_count++] = *make_token(CLOSE_PAREN, &c);
+                    *tokens++ = make_token(CLOSE_PAREN, &c);
                     break;
                 default:
                     ;
             }
         }
     }
-    Token *tail = malloc(sizeof(Token));
-    *tail = (Token){0};
-    tokens[token_count] = *tail;
-    return tokens;
+    *tokens = NULL;
+    return head;
 }
 
